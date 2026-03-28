@@ -96,7 +96,7 @@ const WorldGenerator = struct {
     terrain_noise: fastnoise.Noise(f32),
     ore_noise: fastnoise.Noise(f32),
 
-    pub const density_threshold = 0.2;
+    pub const density_threshold = 0.5;
     pub const NoiseMap = [Chunk.size * Chunk.size]f32;
 
     const Self = @This();
@@ -105,7 +105,7 @@ const WorldGenerator = struct {
         const terrain_noise = fastnoise.Noise(f32){
             .seed = seed,
             .noise_type = .simplex,
-            .frequency = 0.05,
+            .frequency = 0.03,
             .fractal_type = .fbm,
         };
 
