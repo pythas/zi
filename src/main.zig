@@ -2,14 +2,9 @@ const std = @import("std");
 
 const Camera = @import("camera.zig").Camera;
 const InputState = @import("player.zig").InputState;
-const fastnoise = @import("libs/fastnoise.zig");
 const Player = @import("player.zig").Player;
-const Rectangle = @import("primitives.zig").Rectangle;
-const Vec2 = @import("primitives.zig").Vec2;
-const Vec2i = @import("primitives.zig").Vec2i;
-const World = @import("world.zig").World;
-
 const rl = @import("rl.zig").raylib;
+const World = @import("world.zig").World;
 
 pub fn main(init: std.process.Init) !void {
     rl.InitWindow(800, 600, "zi");
