@@ -9,7 +9,8 @@ const Vec2i = @import("primitives.zig").Vec2i;
 pub const Camera = struct {
     rl_camera: rl.Camera2D,
 
-    const zoom_speed = 0.1;
+    const zoom_step = 0.1;
+    const base_pad_speed = 10.0;
 
     const Self = @This();
 
@@ -21,13 +22,6 @@ pub const Camera = struct {
                 .rotation = 0.0,
                 .zoom = 1.0,
             },
-        };
-    }
-
-    pub fn follow(self: *Self, target_pos: Vec2) void {
-        self.rl_camera.target = .{
-            .x = target_pos[0],
-            .y = target_pos[1],
         };
     }
 
@@ -44,7 +38,11 @@ pub const Camera = struct {
     }
 
     pub fn update(self: *Self, input: InputState) void {
-        self.rl_camera.zoom += input.zoom_direction * zoom_speed;
+        const pan_speed = base_pad_speed / self.rl_camera.zoom;
+        self.rl_camera.target.x += input.move_direction[0] * pan_speed;
+        self.rl_camera.target.y += input.move_direction[1] * pan_speed;
+
+        self.rl_camera.zoom += input.zoom_direction * zoom_step;
         self.rl_camera.zoom = std.math.clamp(self.rl_camera.zoom, 0.2, 3.0);
     }
 };

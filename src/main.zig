@@ -2,7 +2,6 @@ const std = @import("std");
 
 const Camera = @import("camera.zig").Camera;
 const InputState = @import("input.zig").InputState;
-const Player = @import("player.zig").Player;
 const rl = @import("rl.zig").raylib;
 const World = @import("world.zig").World;
 
@@ -17,7 +16,6 @@ pub fn main(init: std.process.Init) !void {
     var world = World.init(allocator, 0xdead);
     defer world.deinit();
 
-    var player = Player.init(.{ 0, 0 });
     var camera = Camera.init(.{ 0, 0 });
 
     while (!rl.WindowShouldClose()) {
@@ -37,9 +35,7 @@ pub fn main(init: std.process.Init) !void {
         try world.loadVisibleChunks(viewport);
         try world.unloadDistantChunks(viewport);
 
-        player.update(input);
         camera.update(input);
-        camera.follow(player.position);
 
         rl.BeginDrawing();
         defer rl.EndDrawing();
