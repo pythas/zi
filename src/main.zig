@@ -23,6 +23,7 @@ pub fn main(init: std.process.Init) !void {
     while (!rl.WindowShouldClose()) {
         var input = InputState{
             .move_direction = .{ 0, 0 },
+            .zoom_direction = 0,
         };
 
         if (rl.IsKeyDown(rl.KEY_W)) input.move_direction[1] -= 1.0;
@@ -30,9 +31,12 @@ pub fn main(init: std.process.Init) !void {
         if (rl.IsKeyDown(rl.KEY_A)) input.move_direction[0] -= 1.0;
         if (rl.IsKeyDown(rl.KEY_D)) input.move_direction[0] += 1.0;
 
+        input.zoom_direction = rl.GetMouseWheelMove();
+
         try world.loadVisibleChunks(&camera);
 
         player.update(input);
+        camera.update(input);
         camera.follow(player.position);
 
         rl.BeginDrawing();

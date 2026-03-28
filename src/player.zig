@@ -7,6 +7,7 @@ const Vec2i = @import("primitives.zig").Vec2i;
 
 pub const InputState = struct {
     move_direction: Vec2,
+    zoom_direction: f32,
 };
 
 pub const Player = struct {

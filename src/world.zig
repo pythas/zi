@@ -5,16 +5,26 @@ const fastnoise = @import("libs/fastnoise.zig");
 const Rectangle = @import("primitives.zig").Rectangle;
 const Vec2 = @import("primitives.zig").Vec2;
 const Vec2i = @import("primitives.zig").Vec2i;
+const Color = @import("primitives.zig").Color;
 
 const rl = @import("rl.zig").raylib;
 
+pub const TileKind = enum {
+    rock,
+    iron,
+};
+
 pub const Tile = struct {
+    kind: TileKind,
+
     const Self = @This();
 
     pub const size = 32;
 
-    pub fn init() Self {
-        return .{};
+    pub fn init(kind: TileKind) Self {
+        return .{
+            .kind = kind,
+        };
     }
 };
 
@@ -59,17 +69,20 @@ pub const Chunk = struct {
             var local_x: usize = 0;
             while (local_x < size) : (local_x += 1) {
                 if (self.getTile(local_x, local_y)) |tile| {
-                    _ = tile;
-
                     const draw_x = chunk_pixel_x + (@as(f32, @floatFromInt(local_x)) * Tile.size);
                     const draw_y = chunk_pixel_y + (@as(f32, @floatFromInt(local_y)) * Tile.size);
+
+                    const color = switch (tile.kind) {
+                        .rock => Color.init(80, 80, 80, 255),
+                        .iron => Color.init(186, 110, 64, 255),
+                    };
 
                     rl.DrawRectangleRec(.{
                         .x = draw_x,
                         .y = draw_y,
                         .width = Tile.size,
                         .height = Tile.size,
-                    }, rl.DARKGREEN);
+                    }, @bitCast(color));
                 }
             }
         }
@@ -79,6 +92,7 @@ pub const Chunk = struct {
 const WorldGenerator = struct {
     seed: i32,
     terrain_noise: fastnoise.Noise(f32),
+    ore_noise: fastnoise.Noise(f32),
 
     pub const density_threshold = 0.2;
     pub const NoiseMap = [Chunk.size * Chunk.size]f32;
@@ -86,23 +100,31 @@ const WorldGenerator = struct {
     const Self = @This();
 
     pub fn init(seed: i32) Self {
-        const noise = fastnoise.Noise(f32){
+        const terrain_noise = fastnoise.Noise(f32){
             .seed = seed,
             .noise_type = .simplex,
             .frequency = 0.05,
             .fractal_type = .fbm,
         };
 
+        const ore_noise = fastnoise.Noise(f32){
+            .seed = seed + 1,
+            .noise_type = .simplex,
+            .frequency = 0.15,
+            .fractal_type = .fbm,
+        };
+
         return .{
             .seed = seed,
-            .terrain_noise = noise,
+            .terrain_noise = terrain_noise,
+            .ore_noise = ore_noise,
         };
     }
 
-    fn generateTerrainMap(self: *Self, offset: Vec2) NoiseMap {
+    fn generateNoiseMap(_: *Self, noise: *fastnoise.Noise(f32), offset: Vec2) NoiseMap {
         var noise_map: [Chunk.size * Chunk.size]f32 = undefined;
         for (0..noise_map.len) |i| {
-            noise_map[i] = self.terrain_noise.genNoise2D(
+            noise_map[i] = noise.genNoise2D(
                 offset[0] + @as(f32, @floatFromInt(i % Chunk.size)),
                 offset[1] + @as(f32, @floatFromInt(i / Chunk.size)),
             );
@@ -114,10 +136,20 @@ const WorldGenerator = struct {
     pub fn generateChunk(self: *Self, chunk_position: Vec2i) Chunk {
         var chunk = Chunk.init(chunk_position);
 
-        const terrain_map = self.generateTerrainMap(@as(Vec2, @floatFromInt(chunk_position)) * @as(Vec2, @splat(Chunk.size)));
-        for (terrain_map, 0..) |value, i| {
-            if (value > density_threshold) {
-                chunk.tiles[i] = Tile.init();
+        const chunk_offset = @as(Vec2, @floatFromInt(chunk_position)) * @as(Vec2, @splat(Chunk.size));
+
+        const terrain_map = self.generateNoiseMap(&self.terrain_noise, chunk_offset);
+        for (terrain_map, 0..) |terrain_value, i| {
+            if (terrain_value > density_threshold) {
+                const ore_x = @as(f32, @floatFromInt(i % Chunk.size));
+                const ore_y = @as(f32, @floatFromInt(i / Chunk.size));
+
+                const ore_value = self.ore_noise.genNoise2D(chunk_offset[0] + ore_x, chunk_offset[1] + ore_y);
+                if (ore_value > 0.6) {
+                    chunk.tiles[i] = Tile.init(.iron);
+                } else {
+                    chunk.tiles[i] = Tile.init(.rock);
+                }
             }
         }
 
@@ -141,7 +173,7 @@ pub const World = struct {
             .generator = WorldGenerator.init(seed),
             .chunks = std.AutoHashMap(Vec2i, Chunk).init(allocator),
             .load_distance = 1,
-            .unload_distance = 2,
+            .unload_distance = 3,
             .prev_chunk = null,
         };
     }
@@ -184,6 +216,7 @@ pub const World = struct {
             }
         }
 
+        // unload distant chunks
         if (self.prev_chunk) |prev_chunk| {
             if (!std.meta.eql(prev_chunk, player_chunk)) {
                 var unloads: std.ArrayList(Vec2i) = .empty;

@@ -24,3 +24,21 @@ pub const Rectangle = extern struct {
         return rl.CheckCollisionRecs(@bitCast(self), @bitCast(other));
     }
 };
+
+pub const Color = extern struct {
+    r: u8 = 0,
+    g: u8 = 0,
+    b: u8 = 0,
+    a: u8 = 0,
+
+    const Self = @This();
+
+    pub fn init(r: u8, g: u8, b: u8, a: u8) Self {
+        return .{
+            .r = r,
+            .g = g,
+            .b = b,
+            .a = a,
+        };
+    }
+};

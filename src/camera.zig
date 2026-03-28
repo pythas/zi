@@ -3,11 +3,14 @@ const std = @import("std");
 const Rectangle = @import("primitives.zig").Rectangle;
 const Vec2 = @import("primitives.zig").Vec2;
 const Vec2i = @import("primitives.zig").Vec2i;
+const InputState = @import("player.zig").InputState;
 
 const rl = @import("rl.zig").raylib;
 
 pub const Camera = struct {
     rl_camera: rl.Camera2D,
+
+    const zoom_speed = 0.1;
 
     const Self = @This();
 
@@ -39,5 +42,10 @@ pub const Camera = struct {
             bottom_right.x - top_left.x,
             bottom_right.y - top_left.y,
         );
+    }
+
+    pub fn update(self: *Self, input: InputState) void {
+        self.rl_camera.zoom += input.zoom_direction * zoom_speed;
+        self.rl_camera.zoom = std.math.clamp(self.rl_camera.zoom, 0.2, 3.0);
     }
 };
