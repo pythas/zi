@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const Camera = @import("camera.zig").Camera;
-const InputState = @import("player.zig").InputState;
+const InputState = @import("input.zig").InputState;
 const Player = @import("player.zig").Player;
 const rl = @import("rl.zig").raylib;
 const World = @import("world.zig").World;

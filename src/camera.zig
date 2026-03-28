@@ -1,11 +1,10 @@
 const std = @import("std");
 
+const InputState = @import("input.zig").InputState;
 const Rectangle = @import("primitives.zig").Rectangle;
+const rl = @import("rl.zig").raylib;
 const Vec2 = @import("primitives.zig").Vec2;
 const Vec2i = @import("primitives.zig").Vec2i;
-const InputState = @import("player.zig").InputState;
-
-const rl = @import("rl.zig").raylib;
 
 pub const Camera = struct {
     rl_camera: rl.Camera2D,

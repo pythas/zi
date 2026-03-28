@@ -1,14 +1,10 @@
 const std = @import("std");
 
+const InputState = @import("input.zig").InputState;
 const fastnoise = @import("libs/fastnoise.zig");
 const Rectangle = @import("primitives.zig").Rectangle;
 const Vec2 = @import("primitives.zig").Vec2;
 const Vec2i = @import("primitives.zig").Vec2i;
-
-pub const InputState = struct {
-    move_direction: Vec2,
-    zoom_direction: f32,
-};
 
 pub const Player = struct {
     position: Vec2,
