@@ -1,12 +1,13 @@
 const std = @import("std");
 
 const Camera = @import("camera.zig").Camera;
-const InputState = @import("input.zig").InputState;
-const rl = @import("rl.zig").raylib;
-const World = @import("world.zig").World;
-const Ui = @import("ui.zig").Ui;
-const Rectangle = @import("primitives.zig").Rectangle;
 const Color = @import("primitives.zig").Color;
+const Drill = @import("world.zig").Drill;
+const InputState = @import("input.zig").InputState;
+const Rectangle = @import("primitives.zig").Rectangle;
+const rl = @import("rl.zig").raylib;
+const Ui = @import("ui.zig").Ui;
+const World = @import("world.zig").World;
 
 pub fn main(init: std.process.Init) !void {
     rl.InitWindow(800, 600, "zi");
@@ -45,13 +46,12 @@ pub fn main(init: std.process.Init) !void {
         if (rl.IsMouseButtonPressed(rl.MOUSE_BUTTON_LEFT)) {
             const mouse_pos = rl.GetMousePosition();
 
-            if (world.getTileAtScreenPosition(mouse_pos, &camera)) |hit| {
-                const chunk = world.chunks.getPtr(hit.chunk_pos).?;
+            const global_pos = world.getGlobalPositionFromScreen(mouse_pos, &camera);
 
-                if (chunk.tiles[hit.tile_index]) |tile| {
-                    if (tile.kind == .iron) {
-                        try world.active_drills.put(hit.toGlobalTilePosition(), .{});
-                    }
+            if (world.getTile(global_pos)) |tile| {
+                if (tile.kind == .iron) {
+                    try world.active_drills.put(global_pos, Drill.init(2.0));
+                    std.debug.print("Drill placed at {d}, {d}\n", .{ global_pos[0], global_pos[1] });
                 }
             }
         }

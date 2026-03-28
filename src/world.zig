@@ -16,6 +16,7 @@ pub const TileKind = enum {
 
 pub const Tile = struct {
     kind: TileKind,
+    yield: u32,
 
     const Self = @This();
 
@@ -24,6 +25,7 @@ pub const Tile = struct {
     pub fn init(kind: TileKind) Self {
         return .{
             .kind = kind,
+            .yield = 5, // TODO: set through WWorldGenerator
         };
     }
 };
@@ -158,10 +160,17 @@ const WorldGenerator = struct {
 };
 
 pub const Drill = struct {
-    timer: f32 = 0.0,
-    duration: f32 = 2.0,
+    timer: f32,
+    duration: f32,
 
     const Self = @This();
+
+    pub fn init(duration: f32) Self {
+        return .{
+            .timer = 0.0,
+            .duration = duration,
+        };
+    }
 
     pub fn getProgress(self: *Self) f32 {
         return @min(1.0, self.timer / self.duration);
@@ -171,24 +180,11 @@ pub const Drill = struct {
         self.timer += dt;
 
         if (self.timer >= self.duration) {
+            self.timer -= self.duration;
             return true;
         }
 
         return false;
-    }
-};
-
-pub const WorldPosition = struct {
-    chunk_pos: Vec2i,
-    tile_index: usize,
-    local_x: usize,
-    local_y: usize,
-
-    pub fn toGlobalTilePosition(self: @This()) Vec2i {
-        return .{
-            (self.chunk_pos[0] * Chunk.size) + @as(i32, @intCast(self.local_x)),
-            (self.chunk_pos[1] * Chunk.size) + @as(i32, @intCast(self.local_y)),
-        };
     }
 };
 
@@ -234,8 +230,11 @@ pub const World = struct {
             var active_drill = entry.value_ptr;
 
             if (active_drill.update(rl.GetFrameTime())) {
-                try unload_drills.append(self.allocator, position);
-                self.clearTile(position);
+                const is_depleted = self.mineTile(position);
+
+                if (is_depleted) {
+                    try unload_drills.append(self.allocator, position);
+                }
             }
         }
 
@@ -244,49 +243,57 @@ pub const World = struct {
         }
     }
 
-    pub fn getTileAtScreenPosition(self: *Self, screen_pos: rl.Vector2, camera: *Camera) ?WorldPosition {
+    pub fn getGlobalPositionFromScreen(_: *Self, screen_pos: rl.Vector2, camera: *Camera) Vec2i {
         const world_pos = rl.GetScreenToWorld2D(screen_pos, camera.rl_camera);
 
-        const chunk_x: i32 = @intFromFloat(@floor(world_pos.x / @as(f32, @floatFromInt(Chunk.size_pixels))));
-        const chunk_y: i32 = @intFromFloat(@floor(world_pos.y / @as(f32, @floatFromInt(Chunk.size_pixels))));
-        const chunk_pos = Vec2i{ chunk_x, chunk_y };
+        const global_x: i32 = @intFromFloat(@floor(world_pos.x / @as(f32, @floatFromInt(Tile.size))));
+        const global_y: i32 = @intFromFloat(@floor(world_pos.y / @as(f32, @floatFromInt(Tile.size))));
 
-        if (!self.chunks.contains(chunk_pos)) {
-            return null;
-        }
-
-        const local_pixel_x = world_pos.x - (@as(f32, @floatFromInt(chunk_x)) * @as(f32, @floatFromInt(Chunk.size_pixels)));
-        const local_pixel_y = world_pos.y - (@as(f32, @floatFromInt(chunk_y)) * @as(f32, @floatFromInt(Chunk.size_pixels)));
-
-        const local_x: usize = @intFromFloat(@floor(local_pixel_x / @as(f32, @floatFromInt(Tile.size))));
-        const local_y: usize = @intFromFloat(@floor(local_pixel_y / @as(f32, @floatFromInt(Tile.size))));
-
-        const tile_index = (local_y * Chunk.size) + local_x;
-
-        return WorldPosition{
-            .chunk_pos = chunk_pos,
-            .tile_index = tile_index,
-            .local_x = local_x,
-            .local_y = local_y,
-        };
+        return .{ global_x, global_y };
     }
 
-    pub fn clearTile(self: *Self, position: Vec2i) void {
+    pub fn getTilePtr(self: *Self, global_pos: Vec2i) ?*?Tile {
         const chunk_size = @as(i32, @intCast(Chunk.size));
 
         const chunk_pos = Vec2i{
-            @divFloor(position[0], chunk_size),
-            @divFloor(position[1], chunk_size),
+            @divFloor(global_pos[0], chunk_size),
+            @divFloor(global_pos[1], chunk_size),
         };
 
-        const local_x: usize = @intCast(@mod(position[0], chunk_size));
-        const local_y: usize = @intCast(@mod(position[1], chunk_size));
-
-        const tile_index = (local_y * Chunk.size) + local_x;
-
         if (self.chunks.getPtr(chunk_pos)) |chunk| {
-            chunk.tiles[tile_index] = null;
+            const local_x: usize = @intCast(@mod(global_pos[0], chunk_size));
+            const local_y: usize = @intCast(@mod(global_pos[1], chunk_size));
+            const tile_index = (local_y * Chunk.size) + local_x;
+
+            return &chunk.tiles[tile_index];
         }
+
+        return null;
+    }
+
+    pub fn getTile(self: *Self, global_pos: Vec2i) ?Tile {
+        if (self.getTilePtr(global_pos)) |tile_slot| {
+            return tile_slot.*;
+        }
+
+        return null;
+    }
+
+    pub fn mineTile(self: *Self, position: Vec2i) bool {
+        const tile_slot = self.getTilePtr(position) orelse return false;
+
+        if (tile_slot.*) |*tile| {
+            tile.yield -= 1;
+
+            std.debug.print("Mined 1 ore. Remaining: {d}\n", .{tile.yield});
+
+            if (tile.yield == 0) {
+                tile_slot.* = null;
+                return true;
+            }
+        }
+
+        return false;
     }
 
     pub fn loadChunk(self: *Self, position: Vec2i) !void {
