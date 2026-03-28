@@ -4,6 +4,9 @@ const Camera = @import("camera.zig").Camera;
 const InputState = @import("input.zig").InputState;
 const rl = @import("rl.zig").raylib;
 const World = @import("world.zig").World;
+const Ui = @import("ui.zig").Ui;
+const Rectangle = @import("primitives.zig").Rectangle;
+const Color = @import("primitives.zig").Color;
 
 pub fn main(init: std.process.Init) !void {
     rl.InitWindow(800, 600, "zi");
@@ -18,7 +21,10 @@ pub fn main(init: std.process.Init) !void {
 
     var camera = Camera.init(.{ 0, 0 });
 
+    var ui = Ui.init();
+
     while (!rl.WindowShouldClose()) {
+        // input
         var input = InputState{
             .move_direction = .{ 0, 0 },
             .zoom_direction = 0,
@@ -31,23 +37,32 @@ pub fn main(init: std.process.Init) !void {
 
         input.zoom_direction = rl.GetMouseWheelMove();
 
+        // chunks
         const viewport = camera.getViewport();
         try world.loadVisibleChunks(viewport);
         try world.unloadDistantChunks(viewport);
 
+        // update state
         camera.update(input);
 
-        rl.BeginDrawing();
-        defer rl.EndDrawing();
+        {
+            rl.BeginDrawing();
+            defer rl.EndDrawing();
 
-        rl.ClearBackground(rl.RAYWHITE);
+            rl.ClearBackground(rl.RAYWHITE);
 
-        rl.BeginMode2D(camera.rl_camera);
+            {
+                rl.BeginMode2D(camera.rl_camera);
+                defer rl.EndMode2D();
 
-        world.draw(&camera);
+                world.draw(&camera);
+            }
 
-        rl.EndMode2D();
+            // ui
+            ui.panel(Rectangle.init(0, 0, 800, 100), Color.init(20, 20, 100, 255));
+            _ = ui.button(Rectangle.init(10, 10, 100, 20), "Lorem ipsum");
 
-        rl.DrawFPS(10, 10);
+            // rl.DrawFPS(10, 10);
+        }
     }
 }
