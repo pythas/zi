@@ -161,9 +161,6 @@ pub const World = struct {
     allocator: std.mem.Allocator,
     generator: WorldGenerator,
     chunks: std.AutoHashMap(Vec2i, Chunk),
-    load_distance: i32,
-    unload_distance: i32,
-    prev_chunk: ?Vec2i,
 
     const Self = @This();
 
@@ -172,9 +169,6 @@ pub const World = struct {
             .allocator = allocator,
             .generator = WorldGenerator.init(seed),
             .chunks = std.AutoHashMap(Vec2i, Chunk).init(allocator),
-            .load_distance = 1,
-            .unload_distance = 3,
-            .prev_chunk = null,
         };
     }
 
@@ -201,44 +195,49 @@ pub const World = struct {
         std.debug.print("LOAD CHUNK: {d} {d}\n", .{ position[0], position[1] });
     }
 
-    pub fn loadVisibleChunks(self: *Self, camera: *Camera) !void {
-        const player_chunk_x: i32 = @intFromFloat(@floor(camera.rl_camera.target.x / Chunk.size_pixels));
-        const player_chunk_y: i32 = @intFromFloat(@floor(camera.rl_camera.target.y / Chunk.size_pixels));
-        const player_chunk = Vec2i{ player_chunk_x, player_chunk_y };
+    fn chunkBounds(viewport: Rectangle, padding: f32) struct { min_x: i32, min_y: i32, max_x: i32, max_y: i32 } {
+        const padding_pixels = @as(f32, @floatFromInt(Chunk.size_pixels)) * padding;
 
-        var chunk_y: i32 = player_chunk_y - self.load_distance;
-        while (chunk_y <= player_chunk_y + self.load_distance) : (chunk_y += 1) {
-            var chunk_x: i32 = player_chunk_x - self.load_distance;
-            while (chunk_x <= player_chunk_x + self.load_distance) : (chunk_x += 1) {
-                const position = .{ chunk_x, chunk_y };
+        return .{
+            .min_x = @intFromFloat(@floor((viewport.x - padding_pixels) / Chunk.size_pixels)),
+            .min_y = @intFromFloat(@floor((viewport.y - padding_pixels) / Chunk.size_pixels)),
+            .max_x = @intFromFloat(@floor((viewport.x + viewport.width + padding_pixels) / Chunk.size_pixels)),
+            .max_y = @intFromFloat(@floor((viewport.y + viewport.height + padding_pixels) / Chunk.size_pixels)),
+        };
+    }
 
-                try self.loadChunk(position);
+    pub fn loadVisibleChunks(self: *Self, viewport: Rectangle) !void {
+        const bounds = chunkBounds(viewport, 1.0);
+
+        var chunk_y = bounds.min_y;
+        while (chunk_y <= bounds.max_y) : (chunk_y += 1) {
+            var chunk_x = bounds.min_x;
+            while (chunk_x <= bounds.max_x) : (chunk_x += 1) {
+                try self.loadChunk(.{ chunk_x, chunk_y });
+            }
+        }
+    }
+
+    pub fn unloadDistantChunks(self: *Self, viewport: Rectangle) !void {
+        const bounds = chunkBounds(viewport, 3.0);
+
+        var unloads: std.ArrayList(Vec2i) = .empty;
+        defer unloads.deinit(self.allocator);
+
+        var it = self.chunks.keyIterator();
+        while (it.next()) |pos_ptr| {
+            const pos = pos_ptr.*;
+
+            if (pos[0] < bounds.min_x or pos[0] > bounds.max_x or
+                pos[1] < bounds.min_y or pos[1] > bounds.max_y)
+            {
+                try unloads.append(self.allocator, pos);
             }
         }
 
-        // unload distant chunks
-        if (self.prev_chunk) |prev_chunk| {
-            if (!std.meta.eql(prev_chunk, player_chunk)) {
-                var unloads: std.ArrayList(Vec2i) = .empty;
-                defer unloads.deinit(self.allocator);
-
-                var it = self.chunks.valueIterator();
-                while (it.next()) |chunk| {
-                    const d = @abs(chunk.position - player_chunk);
-
-                    if (@max(d[0], d[1]) > self.unload_distance) {
-                        try unloads.append(self.allocator, chunk.position);
-                    }
-                }
-
-                for (unloads.items) |unload| {
-                    if (!self.chunks.remove(unload)) continue;
-
-                    std.debug.print("UNLOAD CHUNK: {d} {d}\n", .{ unload[0], unload[1] });
-                }
-            }
+        for (unloads.items) |unload_pos| {
+            _ = self.chunks.remove(unload_pos);
+            std.debug.print("UNLOAD CHUNK: {d} {d}\n", .{ unload_pos[0], unload_pos[1] });
         }
-
-        self.prev_chunk = player_chunk;
     }
 };

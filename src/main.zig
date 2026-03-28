@@ -33,7 +33,9 @@ pub fn main(init: std.process.Init) !void {
 
         input.zoom_direction = rl.GetMouseWheelMove();
 
-        try world.loadVisibleChunks(&camera);
+        const viewport = camera.getViewport();
+        try world.loadVisibleChunks(viewport);
+        try world.unloadDistantChunks(viewport);
 
         player.update(input);
         camera.update(input);

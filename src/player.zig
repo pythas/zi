@@ -15,7 +15,7 @@ pub const Player = struct {
     pub fn init(position: Vec2) Self {
         return .{
             .position = position,
-            .speed = 5.0,
+            .speed = 10.0,
         };
     }
 
