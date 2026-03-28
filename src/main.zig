@@ -42,14 +42,29 @@ pub fn main(init: std.process.Init) !void {
         try world.loadVisibleChunks(viewport);
         try world.unloadDistantChunks(viewport);
 
+        if (rl.IsMouseButtonPressed(rl.MOUSE_BUTTON_LEFT)) {
+            const mouse_pos = rl.GetMousePosition();
+
+            if (world.getTileAtScreenPosition(mouse_pos, &camera)) |hit| {
+                const chunk = world.chunks.getPtr(hit.chunk_pos).?;
+
+                if (chunk.tiles[hit.tile_index]) |tile| {
+                    if (tile.kind == .iron) {
+                        try world.active_drills.put(hit.toGlobalTilePosition(), .{});
+                    }
+                }
+            }
+        }
+
         // update state
         camera.update(input);
+        try world.update();
 
         {
             rl.BeginDrawing();
             defer rl.EndDrawing();
 
-            rl.ClearBackground(rl.RAYWHITE);
+            rl.ClearBackground(rl.BLACK);
 
             {
                 rl.BeginMode2D(camera.rl_camera);
@@ -59,8 +74,11 @@ pub fn main(init: std.process.Init) !void {
             }
 
             // ui
-            ui.panel(Rectangle.init(0, 0, 800, 100), Color.init(20, 20, 100, 255));
-            _ = ui.button(Rectangle.init(10, 10, 100, 20), "Lorem ipsum");
+            ui.panel(Rectangle.init(0, 0, 800, 100), Color.init(20, 20, 40, 255));
+
+            if (ui.button(Rectangle.init(10, 10, 60, 20), "Drill").is_clicked) {
+                // ...
+            }
 
             // rl.DrawFPS(10, 10);
         }
