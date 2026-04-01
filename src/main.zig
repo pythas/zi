@@ -17,7 +17,7 @@ pub fn main(init: std.process.Init) !void {
 
     const allocator = init.gpa;
 
-    var world = World.init(allocator, 0xdead);
+    var world = try World.init(allocator, 0xdead);
     defer world.deinit();
 
     var camera = Camera.init(.{ 0, 0 });
@@ -38,19 +38,13 @@ pub fn main(init: std.process.Init) !void {
 
         input.zoom_direction = rl.GetMouseWheelMove();
 
-        // chunks
-        const viewport = camera.getViewport();
-        try world.loadVisibleChunks(viewport);
-        try world.unloadDistantChunks(viewport);
-
         if (rl.IsMouseButtonPressed(rl.MOUSE_BUTTON_LEFT)) {
             const mouse_pos = rl.GetMousePosition();
-
-            const global_pos = world.getGlobalPositionFromScreen(mouse_pos, &camera);
+            const global_pos = World.screenToGrid(mouse_pos, &camera);
 
             if (world.getTile(global_pos)) |tile| {
                 if (tile.kind == .iron) {
-                    try world.active_drills.put(global_pos, Drill.init(2.0));
+                    try world.active_drills.put(global_pos, Drill.init(10.0));
                     std.debug.print("Drill placed at {d}, {d}\n", .{ global_pos[0], global_pos[1] });
                 }
             }

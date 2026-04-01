@@ -21,83 +21,27 @@ pub const Tile = struct {
     const Self = @This();
 
     pub const size = 32;
+    pub const size_f = 32.0;
 
     pub fn init(kind: TileKind) Self {
         return .{
             .kind = kind,
-            .yield = 5, // TODO: set through WWorldGenerator
+            .yield = 5, // TODO: set through WorldGenerator
         };
     }
 };
 
-pub const Chunk = struct {
-    position: Vec2i,
-
-    tiles: [size * size]?Tile,
-
-    pub const size = 16;
-    pub const size_pixels = size * Tile.size;
-
-    const Self = @This();
-
-    pub fn init(position: Vec2i) Self {
-        return .{
-            .position = position,
-            .tiles = .{null} ** (size * size),
-        };
-    }
-
-    pub fn getTile(self: *Self, local_x: usize, local_y: usize) ?Tile {
-        return self.tiles[local_y * size + local_x];
-    }
-
-    pub fn draw(self: *Self, viewport: Rectangle) void {
-        const chunk_pixel_x = @as(f32, @floatFromInt(self.position[0])) * Chunk.size_pixels;
-        const chunk_pixel_y = @as(f32, @floatFromInt(self.position[1])) * Chunk.size_pixels;
-
-        const chunk_rect = Rectangle.init(
-            chunk_pixel_x,
-            chunk_pixel_y,
-            Chunk.size_pixels,
-            Chunk.size_pixels,
-        );
-
-        if (!chunk_rect.collides(viewport)) {
-            return;
-        }
-
-        var local_y: usize = 0;
-        while (local_y < size) : (local_y += 1) {
-            var local_x: usize = 0;
-            while (local_x < size) : (local_x += 1) {
-                if (self.getTile(local_x, local_y)) |tile| {
-                    const draw_x = chunk_pixel_x + (@as(f32, @floatFromInt(local_x)) * Tile.size);
-                    const draw_y = chunk_pixel_y + (@as(f32, @floatFromInt(local_y)) * Tile.size);
-
-                    const color = switch (tile.kind) {
-                        .rock => Color.init(80, 80, 80, 255),
-                        .iron => Color.init(186, 110, 64, 255),
-                    };
-
-                    rl.DrawRectangleRec(.{
-                        .x = draw_x,
-                        .y = draw_y,
-                        .width = Tile.size,
-                        .height = Tile.size,
-                    }, @bitCast(color));
-                }
-            }
-        }
-    }
+pub const AsteroidConfig = struct {
+    min_radius: f32 = 4.0,
+    max_radius: f32 = 12.0,
+    noise_amplitude: f32 = 6.0,
+    iron_threshold: f32 = 0.55,
 };
 
 const WorldGenerator = struct {
-    seed: i32,
+    seed: i64,
     terrain_noise: fastnoise.Noise(f32),
     ore_noise: fastnoise.Noise(f32),
-
-    pub const density_threshold = 0.5;
-    pub const NoiseMap = [Chunk.size * Chunk.size]f32;
 
     const Self = @This();
 
@@ -123,39 +67,62 @@ const WorldGenerator = struct {
         };
     }
 
-    fn generateNoiseMap(_: *Self, noise: *fastnoise.Noise(f32), offset: Vec2) NoiseMap {
-        var noise_map: [Chunk.size * Chunk.size]f32 = undefined;
-        for (0..noise_map.len) |i| {
-            noise_map[i] = noise.genNoise2D(
-                offset[0] + @as(f32, @floatFromInt(i % Chunk.size)),
-                offset[1] + @as(f32, @floatFromInt(i / Chunk.size)),
-            );
-        }
+    pub fn generateAsteroids(
+        self: *Self,
+        tiles: []?Tile,
+        count: usize,
+        spawn_radius: f32,
+        config: AsteroidConfig,
+    ) void {
+        const radius_variance = config.max_radius - config.min_radius;
+        const box_padding: i32 = @intFromFloat(@ceil(config.noise_amplitude));
 
-        return noise_map;
-    }
+        var prng = std.Random.DefaultPrng.init(@bitCast(@as(i64, self.seed)));
+        const random = prng.random();
 
-    pub fn generateChunk(self: *Self, chunk_position: Vec2i) Chunk {
-        var chunk = Chunk.init(chunk_position);
+        const world_size: i32 = World.size;
+        const center_offset = @as(f32, @floatFromInt(world_size / 2));
 
-        const chunk_offset = @as(Vec2, @floatFromInt(chunk_position)) * @as(Vec2, @splat(Chunk.size));
+        for (0..count) |_| {
+            const angle = random.float(f32) * std.math.tau;
+            const distance = @sqrt(random.float(f32)) * spawn_radius;
+            const center_x: i32 = @intFromFloat(center_offset + (distance * @cos(angle)));
+            const center_y: i32 = @intFromFloat(center_offset + (distance * @sin(angle)));
 
-        const terrain_map = self.generateNoiseMap(&self.terrain_noise, chunk_offset);
-        for (terrain_map, 0..) |terrain_value, i| {
-            if (terrain_value > density_threshold) {
-                const ore_x = @as(f32, @floatFromInt(i % Chunk.size));
-                const ore_y = @as(f32, @floatFromInt(i / Chunk.size));
+            const base_radius = (random.float(f32) * radius_variance) + config.min_radius;
 
-                const ore_value = self.ore_noise.genNoise2D(chunk_offset[0] + ore_x, chunk_offset[1] + ore_y);
-                if (ore_value > 0.55) {
-                    chunk.tiles[i] = Tile.init(.iron);
-                } else {
-                    chunk.tiles[i] = Tile.init(.rock);
+            const min_x = @max(0, center_x - @as(i32, @intFromFloat(base_radius)) - box_padding);
+            const max_x = @min(world_size - 1, center_x + @as(i32, @intFromFloat(base_radius)) + box_padding);
+            const min_y = @max(0, center_y - @as(i32, @intFromFloat(base_radius)) - box_padding);
+            const max_y = @min(world_size - 1, center_y + @as(i32, @intFromFloat(base_radius)) + box_padding);
+
+            var y = min_y;
+            while (y <= max_y) : (y += 1) {
+                var x = min_x;
+                while (x <= max_x) : (x += 1) {
+                    const dx = @as(f32, @floatFromInt(x - center_x));
+                    const dy = @as(f32, @floatFromInt(y - center_y));
+                    const tile_dist = @sqrt((dx * dx) + (dy * dy));
+
+                    const noise_val = self.terrain_noise.genNoise2D(@as(f32, @floatFromInt(x)), @as(f32, @floatFromInt(y)));
+                    const bumpy_radius = base_radius + (noise_val * config.noise_amplitude);
+
+                    if (tile_dist <= bumpy_radius) {
+                        const index = @as(usize, @intCast(y)) * @as(usize, @intCast(world_size)) + @as(usize, @intCast(x));
+
+                        const ore_val = self.ore_noise.genNoise2D(@as(f32, @floatFromInt(x)), @as(f32, @floatFromInt(y)));
+
+                        if (ore_val > config.iron_threshold) {
+                            tiles[index] = Tile.init(.iron);
+                        } else {
+                            if (tiles[index] == null or tiles[index].?.kind != .iron) {
+                                tiles[index] = Tile.init(.rock);
+                            }
+                        }
+                    }
                 }
             }
         }
-
-        return chunk;
     }
 };
 
@@ -191,32 +158,67 @@ pub const Drill = struct {
 pub const World = struct {
     allocator: std.mem.Allocator,
     generator: WorldGenerator,
-    chunks: std.AutoHashMap(Vec2i, Chunk),
+    tiles: []?Tile,
 
     active_drills: std.AutoHashMap(Vec2i, Drill),
 
+    pub const size = 1024;
+
     const Self = @This();
 
-    pub fn init(allocator: std.mem.Allocator, seed: i32) Self {
-        return .{
+    pub fn init(allocator: std.mem.Allocator, seed: i32) !Self {
+        const tiles = try allocator.alloc(?Tile, size * size);
+        @memset(tiles, null);
+
+        var self = Self{
             .allocator = allocator,
             .generator = WorldGenerator.init(seed),
-            .chunks = std.AutoHashMap(Vec2i, Chunk).init(allocator),
+            .tiles = tiles,
             .active_drills = std.AutoHashMap(Vec2i, Drill).init(allocator),
         };
+
+        self.generator.generateAsteroids(
+            self.tiles,
+            5,
+            100.0,
+            .{
+                .min_radius = 5.0,
+                .max_radius = 15.0,
+                .noise_amplitude = 6.0,
+                .iron_threshold = 0.30,
+            },
+        );
+
+        return self;
     }
 
     pub fn deinit(self: *Self) void {
-        self.chunks.deinit();
+        self.allocator.free(self.tiles);
         self.active_drills.deinit();
     }
 
     pub fn draw(self: *Self, camera: *Camera) void {
         const viewport = camera.getViewport();
+        const bounds = getBounds(viewport, 3.0);
 
-        var it = self.chunks.valueIterator();
-        while (it.next()) |chunk| {
-            chunk.draw(viewport);
+        var tile_y: i32 = bounds.min_y;
+        while (tile_y <= bounds.max_y) : (tile_y += 1) {
+            var tile_x: i32 = bounds.min_x;
+            while (tile_x <= bounds.max_x) : (tile_x += 1) {
+                const tile = self.getTile(.{ tile_x, tile_y }) orelse continue;
+                const draw_pos = gridToWorld(.{ @as(i32, @intCast(tile_x)), @as(i32, @intCast(tile_y)) });
+                const color = switch (tile.kind) {
+                    .rock => Color.init(80, 80, 80, 255),
+                    .iron => Color.init(186, 110, 64, 255),
+                };
+
+                rl.DrawRectangleRec(.{
+                    .x = draw_pos[0],
+                    .y = draw_pos[1],
+                    .width = Tile.size,
+                    .height = Tile.size,
+                }, @bitCast(color));
+            }
         }
     }
 
@@ -243,40 +245,77 @@ pub const World = struct {
         }
     }
 
-    pub fn getGlobalPositionFromScreen(_: *Self, screen_pos: rl.Vector2, camera: *Camera) Vec2i {
-        const world_pos = rl.GetScreenToWorld2D(screen_pos, camera.rl_camera);
-
-        const global_x: i32 = @intFromFloat(@floor(world_pos.x / @as(f32, @floatFromInt(Tile.size))));
-        const global_y: i32 = @intFromFloat(@floor(world_pos.y / @as(f32, @floatFromInt(Tile.size))));
-
-        return .{ global_x, global_y };
-    }
-
-    pub fn getTilePtr(self: *Self, global_pos: Vec2i) ?*?Tile {
-        const chunk_size = @as(i32, @intCast(Chunk.size));
-
-        const chunk_pos = Vec2i{
-            @divFloor(global_pos[0], chunk_size),
-            @divFloor(global_pos[1], chunk_size),
-        };
-
-        if (self.chunks.getPtr(chunk_pos)) |chunk| {
-            const local_x: usize = @intCast(@mod(global_pos[0], chunk_size));
-            const local_y: usize = @intCast(@mod(global_pos[1], chunk_size));
-            const tile_index = (local_y * Chunk.size) + local_x;
-
-            return &chunk.tiles[tile_index];
-        }
-
-        return null;
-    }
-
-    pub fn getTile(self: *Self, global_pos: Vec2i) ?Tile {
-        if (self.getTilePtr(global_pos)) |tile_slot| {
+    pub fn getTile(self: *Self, pos: Vec2i) ?Tile {
+        if (self.getTilePtr(pos)) |tile_slot| {
             return tile_slot.*;
         }
 
         return null;
+    }
+
+    pub fn getTilePtr(self: *Self, pos: Vec2i) ?*?Tile {
+        // TODO: bounds check
+
+        const x: usize = @intCast(pos[0]);
+        const y: usize = @intCast(pos[1]);
+
+        return &self.tiles[y * size + x];
+    }
+
+    pub fn worldToGrid(world_pos: Vec2) Vec2i {
+        const offset: i32 = size / 2;
+
+        return .{
+            @as(i32, @intFromFloat(@floor(world_pos[0] / Tile.size_f))) + offset,
+            @as(i32, @intFromFloat(@floor(world_pos[1] / Tile.size_f))) + offset,
+        };
+    }
+
+    pub fn gridToWorld(grid_pos: Vec2i) Vec2 {
+        const offset: i32 = size / 2;
+
+        return .{
+            @as(f32, @floatFromInt(grid_pos[0] - offset)) * Tile.size_f,
+            @as(f32, @floatFromInt(grid_pos[1] - offset)) * Tile.size_f,
+        };
+    }
+
+    pub fn screenToGrid(
+        screen_pos: rl.Vector2,
+        camera: *Camera,
+    ) Vec2i {
+        const world_pos = rl.GetScreenToWorld2D(screen_pos, camera.rl_camera);
+
+        return worldToGrid(.{ world_pos.x, world_pos.y });
+    }
+
+    fn getBounds(viewport: Rectangle, padding: f32) struct {
+        min_x: i32,
+        min_y: i32,
+        max_x: i32,
+        max_y: i32,
+    } {
+        const padding_pixels = Tile.size_f * padding;
+
+        const top_left = Vec2{ viewport.x - padding_pixels, viewport.y - padding_pixels };
+        const bottom_right = Vec2{ viewport.x + viewport.width + padding_pixels, viewport.y + viewport.height + padding_pixels };
+
+        const grid_min = worldToGrid(top_left);
+        const grid_max = worldToGrid(bottom_right);
+
+        const max_index: i32 = size - 1;
+
+        const clamped_min_x = @max(0, @min(max_index, grid_min[0]));
+        const clamped_min_y = @max(0, @min(max_index, grid_min[1]));
+        const clamped_max_x = @max(0, @min(max_index, grid_max[0]));
+        const clamped_max_y = @max(0, @min(max_index, grid_max[1]));
+
+        return .{
+            .min_x = @intCast(clamped_min_x),
+            .min_y = @intCast(clamped_min_y),
+            .max_x = @intCast(clamped_max_x),
+            .max_y = @intCast(clamped_max_y),
+        };
     }
 
     pub fn mineTile(self: *Self, position: Vec2i) bool {
@@ -294,61 +333,5 @@ pub const World = struct {
         }
 
         return false;
-    }
-
-    pub fn loadChunk(self: *Self, position: Vec2i) !void {
-        if (self.chunks.contains(position)) return;
-
-        const chunk = self.generator.generateChunk(position);
-
-        try self.chunks.put(position, chunk);
-
-        std.debug.print("LOAD CHUNK: {d} {d}\n", .{ position[0], position[1] });
-    }
-
-    pub fn loadVisibleChunks(self: *Self, viewport: Rectangle) !void {
-        const bounds = chunkBounds(viewport, 1.0);
-
-        var chunk_y = bounds.min_y;
-        while (chunk_y <= bounds.max_y) : (chunk_y += 1) {
-            var chunk_x = bounds.min_x;
-            while (chunk_x <= bounds.max_x) : (chunk_x += 1) {
-                try self.loadChunk(.{ chunk_x, chunk_y });
-            }
-        }
-    }
-
-    pub fn unloadDistantChunks(self: *Self, viewport: Rectangle) !void {
-        const bounds = chunkBounds(viewport, 3.0);
-
-        var unloads: std.ArrayList(Vec2i) = .empty;
-        defer unloads.deinit(self.allocator);
-
-        var it = self.chunks.keyIterator();
-        while (it.next()) |pos_ptr| {
-            const pos = pos_ptr.*;
-
-            if (pos[0] < bounds.min_x or pos[0] > bounds.max_x or
-                pos[1] < bounds.min_y or pos[1] > bounds.max_y)
-            {
-                try unloads.append(self.allocator, pos);
-            }
-        }
-
-        for (unloads.items) |unload_pos| {
-            _ = self.chunks.remove(unload_pos);
-            std.debug.print("UNLOAD CHUNK: {d} {d}\n", .{ unload_pos[0], unload_pos[1] });
-        }
-    }
-
-    fn chunkBounds(viewport: Rectangle, padding: f32) struct { min_x: i32, min_y: i32, max_x: i32, max_y: i32 } {
-        const padding_pixels = @as(f32, @floatFromInt(Chunk.size_pixels)) * padding;
-
-        return .{
-            .min_x = @intFromFloat(@floor((viewport.x - padding_pixels) / Chunk.size_pixels)),
-            .min_y = @intFromFloat(@floor((viewport.y - padding_pixels) / Chunk.size_pixels)),
-            .max_x = @intFromFloat(@floor((viewport.x + viewport.width + padding_pixels) / Chunk.size_pixels)),
-            .max_y = @intFromFloat(@floor((viewport.y + viewport.height + padding_pixels) / Chunk.size_pixels)),
-        };
     }
 };
