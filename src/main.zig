@@ -12,6 +12,11 @@ const rl = @import("rl.zig").raylib;
 const Ui = @import("ui.zig").Ui;
 const World = @import("world.zig").World;
 
+pub const Tool = enum {
+    drill,
+    smelter,
+};
+
 pub fn main(init: std.process.Init) !void {
     rl.InitWindow(800, 600, "zi");
     defer rl.CloseWindow();
@@ -32,6 +37,8 @@ pub fn main(init: std.process.Init) !void {
     var camera = Camera.init(.{ 0, 0 });
 
     var inventory = Inventory.init();
+
+    var active_tool: Tool = .drill;
 
     var ui = Ui.init();
 
@@ -55,13 +62,9 @@ pub fn main(init: std.process.Init) !void {
             const mouse_pos = rl.GetMousePosition();
             const global_pos = World.screenToGrid(mouse_pos, &camera);
 
-            if (world.getTile(global_pos)) |tile| {
-                if (tile.kind == .iron) {
-                    if (!compound.buildings.contains(global_pos)) {
-                        try compound.buildings.put(global_pos, .{ .drill = Drill.init(1.0) });
-                        std.debug.print("Drill placed at {d}, {d}\n", .{ global_pos[0], global_pos[1] });
-                    }
-                }
+            switch (active_tool) {
+                .drill => _ = try compound.placeDrill(&world, global_pos),
+                .smelter => _ = try compound.placeSmelter(&world, global_pos),
             }
         }
 
@@ -83,6 +86,9 @@ pub fn main(init: std.process.Init) !void {
         }
         events.clearRetainingCapacity();
 
+        const viewport = camera.getViewport();
+        const grid_bounds = World.getBounds(viewport, 3.0);
+
         {
             rl.BeginDrawing();
             defer rl.EndDrawing();
@@ -93,20 +99,25 @@ pub fn main(init: std.process.Init) !void {
                 rl.BeginMode2D(camera.rl_camera);
                 defer rl.EndMode2D();
 
-                world.draw(&camera);
+                world.draw(grid_bounds);
+                compound.draw(grid_bounds);
             }
 
             // ui
             ui.panel(Rectangle.init(0, 0, 800, 100), Color.init(20, 20, 40, 255));
 
-            if (ui.button(Rectangle.init(10, 10, 60, 20), "Drill").is_clicked) {
-                // ...
+            if (ui.button(Rectangle.init(10, 10, 60, 20), active_tool == .drill, "Drill").is_clicked) {
+                active_tool = .drill;
+            }
+
+            if (ui.button(Rectangle.init(80, 10, 60, 20), active_tool == .smelter, "Smelter").is_clicked) {
+                active_tool = .smelter;
             }
 
             var buffer: [64]u8 = undefined;
             const text = try std.fmt.bufPrintZ(&buffer, "Raw iron: {d}", .{inventory.items.get(.raw_iron).?});
 
-            ui.label(.{ 100, 10 }, text, 10, Color.init(230, 230, 230, 255));
+            ui.label(.{ 200, 10 }, text, 10, Color.init(230, 230, 230, 255));
 
             // rl.DrawFPS(10, 10);
         }

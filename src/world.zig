@@ -135,6 +135,13 @@ const WorldGenerator = struct {
     }
 };
 
+pub const GridBounds = struct {
+    min_x: i32,
+    min_y: i32,
+    max_x: i32,
+    max_y: i32,
+};
+
 pub const World = struct {
     allocator: std.mem.Allocator,
     generator: WorldGenerator,
@@ -173,10 +180,7 @@ pub const World = struct {
         self.allocator.free(self.tiles);
     }
 
-    pub fn draw(self: *Self, camera: *Camera) void {
-        const viewport = camera.getViewport();
-        const bounds = getBounds(viewport, 3.0);
-
+    pub fn draw(self: *Self, bounds: GridBounds) void {
         var tile_y: i32 = bounds.min_y;
         while (tile_y <= bounds.max_y) : (tile_y += 1) {
             var tile_x: i32 = bounds.min_x;
@@ -215,6 +219,29 @@ pub const World = struct {
         return &self.tiles[y * size + x];
     }
 
+    pub fn getAdjacentTiles(self: *Self, pos: Vec2i) std.BoundedArray(Tile, 8) {
+        var tiles = std.BoundedArray(Tile, 8).init(0) catch unreachable;
+
+        const x_min = pos[0] - 1;
+        const y_min = pos[1] - 1;
+        const x_max = pos[0] + 1;
+        const y_max = pos[1] + 1;
+
+        var y = y_min;
+        while (y <= y_max) : (y += 1) {
+            var x = x_min;
+            while (x <= x_max) : (x += 1) {
+                if (x == pos[0] and y == pos[1]) continue;
+
+                const tile = self.getTile(.{ x, y }) orelse continue;
+
+                tiles.append(tile) catch unreachable;
+            }
+        }
+
+        return tiles;
+    }
+
     pub fn worldToGrid(world_pos: Vec2) Vec2i {
         const offset: i32 = size / 2;
 
@@ -242,12 +269,7 @@ pub const World = struct {
         return worldToGrid(.{ world_pos.x, world_pos.y });
     }
 
-    fn getBounds(viewport: Rectangle, padding: f32) struct {
-        min_x: i32,
-        min_y: i32,
-        max_x: i32,
-        max_y: i32,
-    } {
+    pub fn getBounds(viewport: Rectangle, padding: f32) GridBounds {
         const padding_pixels = Tile.size_f * padding;
 
         const top_left = Vec2{ viewport.x - padding_pixels, viewport.y - padding_pixels };
