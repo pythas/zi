@@ -2,13 +2,15 @@ const std = @import("std");
 
 const Camera = @import("camera.zig").Camera;
 const Color = @import("primitives.zig").Color;
-const Drill = @import("world.zig").Drill;
+const Compound = @import("compound.zig").Compound;
+const Drill = @import("building.zig").Drill;
+const Event = @import("event.zig").Event;
 const InputState = @import("input.zig").InputState;
+const Inventory = @import("inventory.zig").Inventory;
 const Rectangle = @import("primitives.zig").Rectangle;
 const rl = @import("rl.zig").raylib;
 const Ui = @import("ui.zig").Ui;
 const World = @import("world.zig").World;
-const Inventory = @import("inventory.zig").Inventory;
 
 pub fn main(init: std.process.Init) !void {
     rl.InitWindow(800, 600, "zi");
@@ -21,6 +23,12 @@ pub fn main(init: std.process.Init) !void {
     var world = try World.init(allocator, 0xdead);
     defer world.deinit();
 
+    var compound = Compound.init(allocator);
+    defer compound.deinit();
+
+    var events: std.ArrayList(Event) = .empty;
+    defer events.deinit(allocator);
+
     var camera = Camera.init(.{ 0, 0 });
 
     var inventory = Inventory.init();
@@ -28,6 +36,8 @@ pub fn main(init: std.process.Init) !void {
     var ui = Ui.init();
 
     while (!rl.WindowShouldClose()) {
+        const dt = rl.GetFrameTime();
+
         // input
         var input = InputState{
             .move_direction = .{ 0, 0 },
@@ -47,28 +57,31 @@ pub fn main(init: std.process.Init) !void {
 
             if (world.getTile(global_pos)) |tile| {
                 if (tile.kind == .iron) {
-                    try world.active_drills.put(global_pos, Drill.init(1.0));
-                    std.debug.print("Drill placed at {d}, {d}\n", .{ global_pos[0], global_pos[1] });
+                    if (!compound.buildings.contains(global_pos)) {
+                        try compound.buildings.put(global_pos, .{ .drill = Drill.init(1.0) });
+                        std.debug.print("Drill placed at {d}, {d}\n", .{ global_pos[0], global_pos[1] });
+                    }
                 }
             }
         }
 
         // update state
         camera.update(input);
-        try world.update();
+        try compound.update(dt, &world, &events);
 
-        // parse events
-        for (world.events.items) |event| {
+        // handle events
+        for (events.items) |event| {
             switch (event) {
-                .ore_mined => |ore_mined| {
-                    const kind = ore_mined.kind.toResource() orelse continue;
-                    const value = inventory.items.get(kind) orelse continue;
+                .resource_produced => |data| {
+                    const current_amount = inventory.items.get(data.resource) orelse 0;
 
-                    inventory.items.put(kind, value + ore_mined.amount);
+                    inventory.items.put(data.resource, current_amount + data.amount);
+
+                    std.debug.print("Inventory now has {d} {s}\n", .{ current_amount + data.amount, @tagName(data.resource) });
                 },
             }
         }
-        world.events.clearRetainingCapacity();
+        events.clearRetainingCapacity();
 
         {
             rl.BeginDrawing();
@@ -89,6 +102,11 @@ pub fn main(init: std.process.Init) !void {
             if (ui.button(Rectangle.init(10, 10, 60, 20), "Drill").is_clicked) {
                 // ...
             }
+
+            var buffer: [64]u8 = undefined;
+            const text = try std.fmt.bufPrintZ(&buffer, "Raw iron: {d}", .{inventory.items.get(.raw_iron).?});
+
+            ui.label(.{ 100, 10 }, text, 10, Color.init(230, 230, 230, 255));
 
             // rl.DrawFPS(10, 10);
         }

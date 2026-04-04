@@ -1,5 +1,5 @@
-const TileKind = @import("world.zig").TileKind;
+const ResourceKind = @import("inventory.zig").ResourceKind;
 
 pub const Event = union(enum) {
-    ore_mined: struct { kind: TileKind, amount: u32 },
+    resource_produced: struct { resource: ResourceKind, amount: u32 },
 };
