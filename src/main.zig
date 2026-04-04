@@ -8,6 +8,7 @@ const Rectangle = @import("primitives.zig").Rectangle;
 const rl = @import("rl.zig").raylib;
 const Ui = @import("ui.zig").Ui;
 const World = @import("world.zig").World;
+const Inventory = @import("inventory.zig").Inventory;
 
 pub fn main(init: std.process.Init) !void {
     rl.InitWindow(800, 600, "zi");
@@ -21,6 +22,8 @@ pub fn main(init: std.process.Init) !void {
     defer world.deinit();
 
     var camera = Camera.init(.{ 0, 0 });
+
+    var inventory = Inventory.init();
 
     var ui = Ui.init();
 
@@ -44,7 +47,7 @@ pub fn main(init: std.process.Init) !void {
 
             if (world.getTile(global_pos)) |tile| {
                 if (tile.kind == .iron) {
-                    try world.active_drills.put(global_pos, Drill.init(10.0));
+                    try world.active_drills.put(global_pos, Drill.init(1.0));
                     std.debug.print("Drill placed at {d}, {d}\n", .{ global_pos[0], global_pos[1] });
                 }
             }
@@ -53,6 +56,19 @@ pub fn main(init: std.process.Init) !void {
         // update state
         camera.update(input);
         try world.update();
+
+        // parse events
+        for (world.events.items) |event| {
+            switch (event) {
+                .ore_mined => |ore_mined| {
+                    const kind = ore_mined.kind.toResource() orelse continue;
+                    const value = inventory.items.get(kind) orelse continue;
+
+                    inventory.items.put(kind, value + ore_mined.amount);
+                },
+            }
+        }
+        world.events.clearRetainingCapacity();
 
         {
             rl.BeginDrawing();

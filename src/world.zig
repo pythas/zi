@@ -6,12 +6,23 @@ const Rectangle = @import("primitives.zig").Rectangle;
 const Vec2 = @import("primitives.zig").Vec2;
 const Vec2i = @import("primitives.zig").Vec2i;
 const Color = @import("primitives.zig").Color;
+const Event = @import("event.zig").Event;
+const ResourceKind = @import("inventory.zig").ResourceKind;
 
 const rl = @import("rl.zig").raylib;
 
 pub const TileKind = enum {
     rock,
     iron,
+
+    const Self = @This();
+
+    pub fn toResource(self: Self) ?ResourceKind {
+        return switch (self) {
+            .rock => null,
+            .iron => .raw_iron,
+        };
+    }
 };
 
 pub const Tile = struct {
@@ -159,6 +170,7 @@ pub const World = struct {
     allocator: std.mem.Allocator,
     generator: WorldGenerator,
     tiles: []?Tile,
+    events: std.ArrayList(Event),
 
     active_drills: std.AutoHashMap(Vec2i, Drill),
 
@@ -174,6 +186,7 @@ pub const World = struct {
             .allocator = allocator,
             .generator = WorldGenerator.init(seed),
             .tiles = tiles,
+            .events = .empty,
             .active_drills = std.AutoHashMap(Vec2i, Drill).init(allocator),
         };
 
@@ -194,6 +207,7 @@ pub const World = struct {
 
     pub fn deinit(self: *Self) void {
         self.allocator.free(self.tiles);
+        self.events.deinit(self.allocator);
         self.active_drills.deinit();
     }
 
@@ -232,7 +246,7 @@ pub const World = struct {
             var active_drill = entry.value_ptr;
 
             if (active_drill.update(rl.GetFrameTime())) {
-                const is_depleted = self.mineTile(position);
+                const is_depleted = try self.mineTile(position);
 
                 if (is_depleted) {
                     try unload_drills.append(self.allocator, position);
@@ -318,11 +332,13 @@ pub const World = struct {
         };
     }
 
-    pub fn mineTile(self: *Self, position: Vec2i) bool {
+    pub fn mineTile(self: *Self, position: Vec2i) !bool {
         const tile_slot = self.getTilePtr(position) orelse return false;
 
         if (tile_slot.*) |*tile| {
             tile.yield -= 1;
+
+            try self.events.append(self.allocator, .{ .ore_mined = .{ .kind = tile.kind, .amount = 1 } });
 
             std.debug.print("Mined 1 ore. Remaining: {d}\n", .{tile.yield});
 
