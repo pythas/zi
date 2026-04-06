@@ -180,6 +180,10 @@ pub fn updateInventories(registry: *Regsitry) void {
 
         if (adj_inventory.input != null) continue;
 
+        if (!adj_inventory.accepted_inputs.contains(output.resource)) {
+            continue;
+        }
+
         adj_inventory.input = output;
         inventory.output = null;
     }

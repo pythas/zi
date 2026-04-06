@@ -3,6 +3,7 @@ const std = @import("std");
 const Slot = @import("inventory.zig").Slot;
 const Vec2i = @import("primitives.zig").Vec2i;
 const Color = @import("primitives.zig").Color;
+const ResourceKind = @import("inventory.zig").ResourceKind;
 
 pub const Timer = struct {
     timer: f32,
@@ -83,6 +84,7 @@ pub const Inventory = struct {
     output_buffer: ?Slot,
     max_input: u32,
     max_output: u32,
+    accepted_inputs: std.EnumSet(ResourceKind),
 
     const Self = @This();
 
@@ -94,6 +96,7 @@ pub const Inventory = struct {
             .output_buffer = null,
             .max_input = max_input,
             .max_output = max_output,
+            .accepted_inputs = std.EnumSet(ResourceKind).initEmpty(),
         };
     }
 

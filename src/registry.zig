@@ -104,7 +104,9 @@ pub const Registry = struct {
         try self.orientations.put(pos, .north);
         try self.smelters.put(pos, Smelter.init());
         try self.renderables.put(pos, Renderable.init(Color.init(180, 40, 10, 255)));
-        try self.inventories.put(pos, Inventory.init(5, 5));
+        var inventory = Inventory.init(5, 5);
+        inventory.accepted_inputs.insert(.raw_iron);
+        try self.inventories.put(pos, inventory);
         try self.selectables.put(pos, Selectable.init());
 
         std.debug.print("Smelter placed at {d}, {d}\n", .{ pos[0], pos[1] });
