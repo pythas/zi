@@ -60,6 +60,15 @@ pub fn main(init: std.process.Init) !void {
 
         input_state.zoom_direction = rl.GetMouseWheelMove();
 
+        if (rl.IsKeyPressed(rl.KEY_R)) {
+            const mouse_pos = rl.GetMousePosition();
+            const grid_pos = World.screenToGrid(mouse_pos, &camera);
+
+            if (compound.buildings.getPtr(grid_pos)) |building| {
+                building.rotate();
+            }
+        }
+
         if (rl.IsMouseButtonPressed(rl.MOUSE_BUTTON_LEFT)) {
             const mouse_pos = rl.GetMousePosition();
             const grid_pos = World.screenToGrid(mouse_pos, &camera);

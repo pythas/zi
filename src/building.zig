@@ -1,3 +1,5 @@
+// TODO: create a base struct Entity or something that contains direction, is_selected etc
+
 const std = @import("std");
 
 const Event = @import("event.zig").Event;
@@ -13,10 +15,38 @@ pub const Slot = struct {
     amount: u32,
 };
 
+pub const Direction = enum {
+    north,
+    south,
+    east,
+    west,
+
+    const Self = @This();
+
+    pub fn toVec(self: Self) Vec2i {
+        return switch (self) {
+            .north => .{ 0, -1 },
+            .south => .{ 0, 1 },
+            .east => .{ 1, 0 },
+            .west => .{ -1, 0 },
+        };
+    }
+
+    pub fn rotate(self: *Self) void {
+        self.* = switch (self.*) {
+            .north => .east,
+            .east => .south,
+            .south => .west,
+            .west => .north,
+        };
+    }
+};
+
 pub const Drill = struct {
     allocator: std.mem.Allocator,
     timer: f32,
     duration: f32,
+    direction: Direction,
 
     input: ?Slot,
     output: ?Slot,
@@ -33,6 +63,7 @@ pub const Drill = struct {
             .allocator = allocator,
             .timer = 0.0,
             .duration = duration,
+            .direction = .north,
             .input = null,
             .output = null,
             .input_buffer = null,
@@ -119,6 +150,44 @@ pub const Drill = struct {
                 @bitCast(Color.init(255, 110, 64, 255)),
             );
         }
+
+        const center_x = draw_pos[0] + (Tile.size / 2.0);
+        const center_y = draw_pos[1] + (Tile.size / 2.0);
+
+        const offset = Tile.size / 8.0;
+
+        var v1: rl.Vector2 = undefined;
+        var v2: rl.Vector2 = undefined;
+        var v3: rl.Vector2 = undefined;
+
+        switch (self.direction) {
+            .north => {
+                v1 = .{ .x = center_x, .y = center_y - offset };
+                v2 = .{ .x = center_x - offset, .y = center_y + offset };
+                v3 = .{ .x = center_x + offset, .y = center_y + offset };
+            },
+            .south => {
+                v1 = .{ .x = center_x, .y = center_y + offset };
+                v2 = .{ .x = center_x + offset, .y = center_y - offset };
+                v3 = .{ .x = center_x - offset, .y = center_y - offset };
+            },
+            .east => {
+                v1 = .{ .x = center_x + offset, .y = center_y };
+                v2 = .{ .x = center_x - offset, .y = center_y - offset };
+                v3 = .{ .x = center_x - offset, .y = center_y + offset };
+            },
+            .west => {
+                v1 = .{ .x = center_x - offset, .y = center_y };
+                v2 = .{ .x = center_x + offset, .y = center_y + offset };
+                v3 = .{ .x = center_x + offset, .y = center_y - offset };
+            },
+        }
+
+        rl.DrawTriangle(v1, v2, v3, rl.WHITE);
+    }
+
+    pub fn rotate(self: *Self) void {
+        self.direction.rotate();
     }
 };
 
@@ -126,6 +195,7 @@ pub const Smelter = struct {
     allocator: std.mem.Allocator,
     timer: f32,
     duration: f32,
+    direction: Direction,
 
     processing: ?Slot,
 
@@ -144,6 +214,7 @@ pub const Smelter = struct {
             .allocator = allocator,
             .timer = 0.0,
             .duration = duration,
+            .direction = .north,
             .processing = null,
             .input = null,
             .output = null,
@@ -246,6 +317,10 @@ pub const Smelter = struct {
             .height = Tile.size,
         }, @bitCast(color));
     }
+
+    pub fn rotate(self: *Self) void {
+        self.direction.rotate();
+    }
 };
 
 pub const Building = union(enum) {
@@ -293,6 +368,18 @@ pub const Building = union(enum) {
     pub fn setSelected(self: *Self, is_selected: bool) void {
         return switch (self.*) {
             inline else => |*building| building.is_selected = is_selected,
+        };
+    }
+
+    pub fn rotate(self: *Self) void {
+        return switch (self.*) {
+            inline else => |*building| building.rotate(),
+        };
+    }
+
+    pub fn getDirection(self: *Self) ?Direction {
+        return switch (self.*) {
+            inline else => |building| building.direction,
         };
     }
 

@@ -6,6 +6,7 @@ const World = @import("world.zig").World;
 const Event = @import("event.zig").Event;
 const Drill = @import("building.zig").Drill;
 const Smelter = @import("building.zig").Smelter;
+const Direction = @import("building.zig").Direction;
 const Camera = @import("camera.zig").Camera;
 const GridBounds = @import("world.zig").GridBounds;
 
@@ -31,48 +32,24 @@ pub const Compound = struct {
         dt: f32,
         world: *World,
     ) !void {
-        var unload_list: std.ArrayList(Vec2i) = .empty;
-        defer unload_list.deinit(self.allocator);
-
         var it = self.buildings.iterator();
         while (it.next()) |entry| {
             const position = entry.key_ptr.*;
             var building = entry.value_ptr;
 
-            // const should_destroy = try building.update(position, dt, world);
-            //
-            // if (should_destroy) {
-            //     try unload_list.append(self.allocator, position);
-            // }
-
-            // tick
             try building.update(position, dt, world);
 
-            // get output
             const output_ptr = building.getOutputPtr();
+            const output = output_ptr.* orelse continue;
 
-            if (output_ptr.*) |*output| {
-                var buffer: [4]*Building = undefined;
-                const adj_building_ptrs = self.getAdjacentBuildingsPtr(position, &buffer);
+            const direction = building.getDirection() orelse continue;
+            const adj_building = self.getAdjacentBuildingPtr(position, direction) orelse continue;
 
-                for (adj_building_ptrs) |adj_building_ptr| {
-                    const neighbor_input_ptr = adj_building_ptr.getInputPtr();
+            const neighbor_input_ptr = adj_building.getInputPtr();
+            if (neighbor_input_ptr.* != null) continue;
 
-                    if (neighbor_input_ptr.* == null) {
-                        neighbor_input_ptr.* = output.*;
-
-                        std.debug.print("{?}\n", .{neighbor_input_ptr.*});
-
-                        output_ptr.* = null;
-
-                        break;
-                    }
-                }
-            }
-        }
-
-        for (unload_list.items) |pos| {
-            _ = self.buildings.remove(pos);
+            neighbor_input_ptr.* = output;
+            output_ptr.* = null;
         }
     }
 
@@ -93,6 +70,13 @@ pub const Compound = struct {
 
     pub fn getBuildingPtr(self: *Self, pos: Vec2i) ?*Building {
         return self.buildings.getPtr(pos);
+    }
+
+    pub fn getAdjacentBuildingPtr(self: *Self, pos: Vec2i, dir: Direction) ?*Building {
+        const offset = dir.toVec();
+        const neighbor_pos = Vec2i{ pos[0] + offset[0], pos[1] + offset[1] };
+
+        return self.buildings.getPtr(neighbor_pos);
     }
 
     pub fn getAdjacentBuildingsPtr(self: *Self, pos: Vec2i, buffer: *[4]*Building) []*Building {
@@ -128,22 +112,6 @@ pub const Compound = struct {
         _ = world;
 
         if (self.buildings.contains(pos)) return false;
-
-        // var buffer: [4]*Building = undefined;
-        // const adj_building_ptrs = self.getAdjacentBuildingsPtr(pos, &buffer);
-        //
-        // var is_next_to_drill = false;
-        // for (adj_building_ptrs) |adj_building_ptr| {
-        //     switch (adj_building_ptr.*) {
-        //         .drill => {
-        //             is_next_to_drill = true;
-        //             break;
-        //         },
-        //         else => {},
-        //     }
-        // }
-        //
-        // if (!is_next_to_drill) return false;
 
         try self.buildings.put(pos, .{ .smelter = Smelter.init(self.allocator, 1.0) });
         std.debug.print("Smelter placed at {d}, {d}\n", .{ pos[0], pos[1] });
