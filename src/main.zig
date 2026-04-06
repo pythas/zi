@@ -149,11 +149,8 @@ pub fn main(init: std.process.Init) !void {
                 if (compound.buildings.getPtr(building_pos)) |building| {
                     ui.panel(Rectangle.init(600, 40, 200, 600), Color.init(20, 20, 40, 255));
 
-                    const input = building.getInputBufferPtr();
-                    const output = building.getOutputBufferPtr();
-
-                    const input_amount = if (input.*) |slot| slot.amount else 0;
-                    const output_amount = if (output.*) |slot| slot.amount else 0;
+                    const input_amount = building.getInputAmount();
+                    const output_amount = building.getOutputAmount();
 
                     {
                         var buffer: [64]u8 = undefined;

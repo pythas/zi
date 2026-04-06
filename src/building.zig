@@ -54,6 +54,9 @@ pub const Drill = struct {
     input_buffer: ?Slot,
     output_buffer: ?Slot,
 
+    max_input: u32,
+    max_output: u32,
+
     is_selected: bool,
 
     const Self = @This();
@@ -68,6 +71,8 @@ pub const Drill = struct {
             .output = null,
             .input_buffer = null,
             .output_buffer = null,
+            .max_input = 10,
+            .max_output = 10,
             .is_selected = false,
         };
     }
@@ -77,6 +82,7 @@ pub const Drill = struct {
     }
 
     // TODO: add local prop should_destroy instead of passing through update
+    // TODO: stop mining if output is full
 
     pub fn update(
         self: *Self,
@@ -95,9 +101,16 @@ pub const Drill = struct {
             std.debug.print("[Drill] Mined 1 {s} at {d}, {d}\n", .{ @tagName(resource), pos[0], pos[1] });
 
             if (self.output_buffer) |*output_buffer| {
-                output_buffer.amount += 1;
-                std.debug.print("[Drill] Buffer incremented. Now holding: {d} {s}\n", .{ output_buffer.amount, @tagName(output_buffer.resource) });
+                const output_amount = if (self.output) |slot| slot.amount else 0;
+                const total_output = output_buffer.amount + output_amount;
+
+                // push to output
+                if (total_output < self.max_output) {
+                    output_buffer.amount += 1;
+                    std.debug.print("[Drill] Buffer incremented. Now holding: {d} {s}\n", .{ output_buffer.amount, @tagName(output_buffer.resource) });
+                }
             } else {
+                // init output
                 self.output_buffer = .{
                     .resource = resource,
                     .amount = 1,
@@ -205,6 +218,9 @@ pub const Smelter = struct {
     input_buffer: ?Slot,
     output_buffer: ?Slot,
 
+    max_input: u32,
+    max_output: u32,
+
     is_selected: bool,
 
     const Self = @This();
@@ -220,6 +236,8 @@ pub const Smelter = struct {
             .output = null,
             .input_buffer = null,
             .output_buffer = null,
+            .max_input = 10,
+            .max_output = 10,
             .is_selected = false,
         };
     }
@@ -239,7 +257,7 @@ pub const Smelter = struct {
 
         // push to output
         if (self.output_buffer) |*output_buffer| {
-            if (self.output == null and output_buffer.amount > 0) {
+            if (self.output == null and output_buffer.amount > 0 and output_buffer.amount < self.max_output) {
                 self.output = .{ .resource = output_buffer.resource, .amount = 1 };
                 output_buffer.amount -= 1;
 
@@ -265,8 +283,16 @@ pub const Smelter = struct {
                     self.output_buffer = .{ .resource = result_resource, .amount = 1 };
                     output_successful = true;
                 } else if (self.output_buffer.?.resource == result_resource) {
-                    self.output_buffer.?.amount += 1;
-                    output_successful = true;
+                    const output_amount = if (self.output) |slot| slot.amount else 0;
+                    const output_buffer_amount = if (self.output_buffer) |slot| slot.amount else 0;
+                    const total_output = output_buffer_amount + output_amount;
+
+                    if (total_output < self.max_output) {
+                        self.output_buffer.?.amount += 1;
+                        output_successful = true;
+                    } else {
+                        output_successful = false;
+                    }
                 }
 
                 if (output_successful) {
@@ -294,14 +320,19 @@ pub const Smelter = struct {
 
         // pull from input
         if (self.input) |input| {
-            if (self.input_buffer == null) {
-                self.input_buffer = input;
-                self.input = null;
-                std.debug.print("[Smelter] Pulled {d} {s} into input buffer.\n", .{ input.amount, @tagName(input.resource) });
-            } else if (self.input_buffer.?.resource == input.resource) {
-                self.input_buffer.?.amount += input.amount;
-                self.input = null;
-                std.debug.print("[Smelter] Pulled {d} {s} into input buffer.\n", .{ input.amount, @tagName(input.resource) });
+            const input_buffer_amount = if (self.input_buffer) |slot| slot.amount else 0;
+            const total_input = input.amount + input_buffer_amount;
+
+            if (total_input < self.max_input) {
+                if (self.input_buffer == null) {
+                    self.input_buffer = input;
+                    self.input = null;
+                    std.debug.print("[Smelter] Pulled {d} {s} into input buffer.\n", .{ input.amount, @tagName(input.resource) });
+                } else if (self.input_buffer.?.resource == input.resource) {
+                    self.input_buffer.?.amount += input.amount;
+                    self.input = null;
+                    std.debug.print("[Smelter] Pulled {d} {s} into input buffer.\n", .{ input.amount, @tagName(input.resource) });
+                }
             }
         }
     }
@@ -340,6 +371,30 @@ pub const Building = union(enum) {
             .drill => |*d| try d.update(pos, dt, world),
             .smelter => |*s| try s.update(pos, dt, world),
         }
+    }
+
+    pub fn getOutput(self: Self) ?Slot {
+        return switch (self) {
+            inline else => |building| building.output,
+        };
+    }
+
+    pub fn getInput(self: Self) ?Slot {
+        return switch (self) {
+            inline else => |building| building.input,
+        };
+    }
+
+    pub fn getOutputBuffer(self: Self) ?Slot {
+        return switch (self) {
+            inline else => |building| building.output_buffer,
+        };
+    }
+
+    pub fn getInputBuffer(self: Self) ?Slot {
+        return switch (self) {
+            inline else => |building| building.input_buffer,
+        };
     }
 
     pub fn getOutputPtr(self: *Self) *?Slot {
@@ -382,6 +437,21 @@ pub const Building = union(enum) {
         return switch (self.*) {
             inline else => |building| building.direction,
         };
+    }
+
+    // get total input + input_buffer
+    pub fn getInputAmount(self: Self) u32 {
+        const input = if (self.getInput()) |slot| slot.amount else 0;
+        const input_buffer = if (self.getInputBuffer()) |slot| slot.amount else 0;
+
+        return input + input_buffer;
+    }
+
+    pub fn getOutputAmount(self: Self) u32 {
+        const output = if (self.getOutput()) |slot| slot.amount else 0;
+        const output_buffer = if (self.getOutputBuffer()) |slot| slot.amount else 0;
+
+        return output + output_buffer;
     }
 
     pub fn draw(self: *Self, pos: Vec2i) void {
