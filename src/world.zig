@@ -35,7 +35,7 @@ pub const Tile = struct {
     pub fn init(kind: TileKind) Self {
         return .{
             .kind = kind,
-            .yield = 5, // TODO: set through WorldGenerator
+            .yield = 50, // TODO: set through WorldGenerator
         };
     }
 };

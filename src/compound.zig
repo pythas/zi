@@ -26,7 +26,11 @@ pub const Compound = struct {
         self.buildings.deinit();
     }
 
-    pub fn update(self: *Self, dt: f32, world: *World, events: *std.ArrayList(Event)) !void {
+    pub fn update(
+        self: *Self,
+        dt: f32,
+        world: *World,
+    ) !void {
         var unload_list: std.ArrayList(Vec2i) = .empty;
         defer unload_list.deinit(self.allocator);
 
@@ -35,10 +39,35 @@ pub const Compound = struct {
             const position = entry.key_ptr.*;
             var building = entry.value_ptr;
 
-            const should_destroy = try building.update(position, dt, world, events);
+            // const should_destroy = try building.update(position, dt, world);
+            //
+            // if (should_destroy) {
+            //     try unload_list.append(self.allocator, position);
+            // }
 
-            if (should_destroy) {
-                try unload_list.append(self.allocator, position);
+            // tick
+            try building.update(position, dt, world);
+
+            // get output
+            const output_ptr = building.getOutputPtr();
+
+            if (output_ptr.*) |*output| {
+                var buffer: [4]*Building = undefined;
+                const adj_building_ptrs = self.getAdjacentBuildingsPtr(position, &buffer);
+
+                for (adj_building_ptrs) |adj_building_ptr| {
+                    const neighbor_input_ptr = adj_building_ptr.getInputPtr();
+
+                    if (neighbor_input_ptr.* == null) {
+                        neighbor_input_ptr.* = output.*;
+
+                        std.debug.print("{?}\n", .{neighbor_input_ptr.*});
+
+                        output_ptr.* = null;
+
+                        break;
+                    }
+                }
             }
         }
 
@@ -62,14 +91,18 @@ pub const Compound = struct {
         }
     }
 
-    pub fn getAdjacentBuildings(self: *Self, pos: Vec2i, buffer: *[4]Building) []Building {
+    pub fn getBuildingPtr(self: *Self, pos: Vec2i) ?*Building {
+        return self.buildings.getPtr(pos);
+    }
+
+    pub fn getAdjacentBuildingsPtr(self: *Self, pos: Vec2i, buffer: *[4]*Building) []*Building {
         var count: usize = 0;
         const directions = [_]Vec2i{ .{ 1, 0 }, .{ -1, 0 }, .{ 0, 1 }, .{ 0, -1 } };
 
         for (directions) |dir| {
             const neighbor_pos = Vec2i{ pos[0] + dir[0], pos[1] + dir[1] };
 
-            if (self.buildings.get(neighbor_pos)) |building| {
+            if (self.buildings.getPtr(neighbor_pos)) |building| {
                 buffer[count] = building;
                 count += 1;
             }
@@ -96,21 +129,21 @@ pub const Compound = struct {
 
         if (self.buildings.contains(pos)) return false;
 
-        var buffer: [4]Building = undefined;
-        const adj_buildings = self.getAdjacentBuildings(pos, &buffer);
-
-        var is_next_to_drill = false;
-        for (adj_buildings) |adj_building| {
-            switch (adj_building) {
-                .drill => {
-                    is_next_to_drill = true;
-                    break;
-                },
-                else => {},
-            }
-        }
-
-        if (!is_next_to_drill) return false;
+        // var buffer: [4]*Building = undefined;
+        // const adj_building_ptrs = self.getAdjacentBuildingsPtr(pos, &buffer);
+        //
+        // var is_next_to_drill = false;
+        // for (adj_building_ptrs) |adj_building_ptr| {
+        //     switch (adj_building_ptr.*) {
+        //         .drill => {
+        //             is_next_to_drill = true;
+        //             break;
+        //         },
+        //         else => {},
+        //     }
+        // }
+        //
+        // if (!is_next_to_drill) return false;
 
         try self.buildings.put(pos, .{ .smelter = Smelter.init(self.allocator, 1.0) });
         std.debug.print("Smelter placed at {d}, {d}\n", .{ pos[0], pos[1] });
