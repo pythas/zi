@@ -237,8 +237,6 @@ pub const Smelter = struct {
         _ = pos;
         _ = world;
 
-        self.timer += dt;
-
         // push to output
         if (self.output_buffer) |*output_buffer| {
             if (self.output == null and output_buffer.amount > 0) {
@@ -251,8 +249,10 @@ pub const Smelter = struct {
             }
         }
 
-        // process
         if (self.processing) |processing| {
+            // process
+            self.timer += dt;
+
             if (self.timer >= self.duration) {
                 const result_resource: ResourceKind = switch (processing.resource) {
                     .raw_iron => .iron_ingot,
@@ -278,6 +278,7 @@ pub const Smelter = struct {
                 }
             }
         } else {
+            // nothing is processing. grab from input_buffer
             if (self.input_buffer) |*input_buffer| {
                 if (input_buffer.amount > 0) {
                     self.processing = .{ .resource = input_buffer.resource, .amount = 1 };
