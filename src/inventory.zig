@@ -5,14 +5,7 @@ pub const ResourceKind = enum {
     iron_ingot,
 };
 
-pub const Inventory = struct {
-    items: std.EnumMap(ResourceKind, u64),
-
-    const Self = @This();
-
-    pub fn init() Self {
-        return .{
-            .items = std.EnumMap(ResourceKind, u64).initFull(0),
-        };
-    }
+pub const Slot = struct {
+    resource: ResourceKind,
+    amount: u32,
 };

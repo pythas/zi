@@ -2,11 +2,10 @@ const std = @import("std");
 
 const Camera = @import("camera.zig").Camera;
 const Color = @import("primitives.zig").Color;
-const Compound = @import("compound.zig").Compound;
-const Drill = @import("building.zig").Drill;
+const Regsitry = @import("registry.zig").Registry;
+const Drill = @import("components.zig").Drill;
 const Event = @import("event.zig").Event;
 const InputState = @import("input.zig").InputState;
-const Inventory = @import("inventory.zig").Inventory;
 const Rectangle = @import("primitives.zig").Rectangle;
 const Vec2i = @import("primitives.zig").Vec2i;
 const rl = @import("rl.zig").raylib;
@@ -29,8 +28,8 @@ pub fn main(init: std.process.Init) !void {
     var world = try World.init(allocator, 0xdead);
     defer world.deinit();
 
-    var compound = Compound.init(allocator);
-    defer compound.deinit();
+    var registry = Regsitry.init(allocator);
+    defer registry.deinit();
 
     // var events: std.ArrayList(Event) = .empty;
     // defer events.deinit(allocator);
@@ -64,8 +63,12 @@ pub fn main(init: std.process.Init) !void {
             const mouse_pos = rl.GetMousePosition();
             const grid_pos = World.screenToGrid(mouse_pos, &camera);
 
-            if (compound.buildings.getPtr(grid_pos)) |building| {
-                building.rotate();
+            if (registry.orientations.getPtr(grid_pos)) |direction| {
+                if (rl.IsKeyDown(rl.KEY_LEFT_SHIFT)) {
+                    direction.* = direction.rotatedCCW();
+                } else {
+                    direction.* = direction.rotatedCW();
+                }
             }
         }
 
@@ -73,29 +76,43 @@ pub fn main(init: std.process.Init) !void {
             const mouse_pos = rl.GetMousePosition();
             const grid_pos = World.screenToGrid(mouse_pos, &camera);
 
-            _ = switch (active_tool) {
-                .drill => try compound.placeDrill(&world, grid_pos),
-                .smelter => try compound.placeSmelter(&world, grid_pos),
-            };
-
-            if (compound.buildings.getPtr(grid_pos)) |building| {
-                building.setSelected(true);
-
-                inspected = grid_pos;
-            } else {
-                if (inspected) |building_pos| {
-                    if (compound.buildings.getPtr(building_pos)) |building| {
-                        building.setSelected(false);
+            if (registry.selectables.getPtr(grid_pos)) |selectable| {
+                if (inspected) |old_pos| {
+                    if (old_pos[0] != grid_pos[0] or old_pos[1] != grid_pos[1]) {
+                        if (registry.selectables.getPtr(old_pos)) |old_selectable| {
+                            old_selectable.is_selected = false;
+                        }
                     }
                 }
 
-                inspected = null;
+                selectable.is_selected = true;
+                inspected = grid_pos;
+            } else {
+                if (inspected) |old_pos| {
+                    if (registry.selectables.getPtr(old_pos)) |old_selectable| {
+                        old_selectable.is_selected = false;
+                    }
+                    inspected = null;
+                }
+
+                const has_placed_building = switch (active_tool) {
+                    .drill => try registry.placeDrill(&world, grid_pos),
+                    .smelter => try registry.placeSmelter(grid_pos),
+                };
+
+                if (has_placed_building) {
+                    inspected = grid_pos;
+
+                    if (registry.selectables.getPtr(grid_pos)) |selectable| {
+                        selectable.is_selected = true;
+                    }
+                }
             }
         }
 
         // update state
         camera.update(input_state);
-        try compound.update(dt, &world);
+        try registry.update(dt, &world);
 
         // handle events
         // for (events.items) |event| {
@@ -125,7 +142,7 @@ pub fn main(init: std.process.Init) !void {
                 defer rl.EndMode2D();
 
                 world.draw(grid_bounds);
-                compound.draw(grid_bounds);
+                registry.draw(grid_bounds);
             }
 
             // ui
@@ -146,11 +163,11 @@ pub fn main(init: std.process.Init) !void {
             // }
 
             if (inspected) |building_pos| {
-                if (compound.buildings.getPtr(building_pos)) |building| {
+                if (registry.inventories.get(building_pos)) |inventory| {
                     ui.panel(Rectangle.init(600, 40, 200, 600), Color.init(20, 20, 40, 255));
 
-                    const input_amount = building.getInputAmount();
-                    const output_amount = building.getOutputAmount();
+                    const input_amount = inventory.getInputAmount();
+                    const output_amount = inventory.getOutputAmount();
 
                     {
                         var buffer: [64]u8 = undefined;
