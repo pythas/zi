@@ -81,9 +81,6 @@ pub const Drill = struct {
         return @min(1.0, self.timer / self.duration);
     }
 
-    // TODO: add local prop should_destroy instead of passing through update
-    // TODO: stop mining if output is full
-
     pub fn update(
         self: *Self,
         pos: Vec2i,
@@ -93,24 +90,26 @@ pub const Drill = struct {
         self.timer += dt;
 
         if (self.timer >= self.duration) {
+            const output_amount = if (self.output) |slot| slot.amount else 0;
+            const output_buffer_amount = if (self.output_buffer) |slot| slot.amount else 0;
+            const total_output = output_amount + output_buffer_amount;
+
+            if (total_output >= self.max_output) {
+                self.timer = self.duration;
+                return;
+            }
+
             self.timer -= self.duration;
 
-            const mined_tile = world.mineTile(pos) orelse return;
-            const resource = mined_tile.toResource() orelse return;
+            const mined_kind = world.mineTile(pos) orelse return;
+            const resource = mined_kind.toResource() orelse return;
 
             std.debug.print("[Drill] Mined 1 {s} at {d}, {d}\n", .{ @tagName(resource), pos[0], pos[1] });
 
             if (self.output_buffer) |*output_buffer| {
-                const output_amount = if (self.output) |slot| slot.amount else 0;
-                const total_output = output_buffer.amount + output_amount;
-
-                // push to output
-                if (total_output < self.max_output) {
-                    output_buffer.amount += 1;
-                    std.debug.print("[Drill] Buffer incremented. Now holding: {d} {s}\n", .{ output_buffer.amount, @tagName(output_buffer.resource) });
-                }
+                output_buffer.amount += 1;
+                std.debug.print("[Drill] Buffer incremented. Now holding: {d} {s}\n", .{ output_buffer.amount, @tagName(output_buffer.resource) });
             } else {
-                // init output
                 self.output_buffer = .{
                     .resource = resource,
                     .amount = 1,

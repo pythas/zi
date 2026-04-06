@@ -100,7 +100,7 @@ pub const Compound = struct {
 
         const tile = world.getTile(pos) orelse return false;
 
-        if (tile.kind != .iron) return false;
+        if (tile.kind.toResource() == null) return false;
 
         try self.buildings.put(pos, .{ .drill = Drill.init(self.allocator, 1.0) });
         std.debug.print("Drill placed at {d}, {d}\n", .{ pos[0], pos[1] });
