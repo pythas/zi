@@ -105,7 +105,7 @@ pub const Registry = struct {
         try self.drills.put(pos, Drill.init());
         try self.orientations.put(pos, .north);
         try self.renderables.put(pos, Renderable.init(Color.init(40, 180, 10, 255)));
-        try self.inventories.put(pos, Inventory.init(5, 5));
+        try self.inventories.put(pos, Inventory.init(0, 10));
         try self.selectables.put(pos, Selectable.init());
 
         std.debug.print("Drill placed at {d}, {d}\n", .{ pos[0], pos[1] });
@@ -120,9 +120,11 @@ pub const Registry = struct {
         try self.orientations.put(pos, .north);
         try self.smelters.put(pos, Smelter.init());
         try self.renderables.put(pos, Renderable.init(Color.init(180, 40, 10, 255)));
-        var inventory = Inventory.init(5, 5);
+
+        var inventory = Inventory.init(5, 10);
         inventory.accepted_inputs.insert(.raw_iron);
         try self.inventories.put(pos, inventory);
+
         try self.selectables.put(pos, Selectable.init());
 
         std.debug.print("Smelter placed at {d}, {d}\n", .{ pos[0], pos[1] });

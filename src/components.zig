@@ -41,6 +41,7 @@ pub const Smelter = struct {
     }
 };
 
+// TODO: add accepted_inputs to enable filter chests
 pub const Storage = struct {
     items: std.EnumMap(ResourceKind, u32),
 

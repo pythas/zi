@@ -112,6 +112,13 @@ pub fn main(init: std.process.Init) !void {
             }
         }
 
+        if (rl.IsMouseButtonPressed(rl.MOUSE_BUTTON_RIGHT)) {
+            const mouse_pos = rl.GetMousePosition();
+            const grid_pos = World.screenToGrid(mouse_pos, &camera);
+
+            registry.removeEntity(grid_pos);
+        }
+
         // update state
         camera.update(input_state);
         try registry.update(dt, &world);
