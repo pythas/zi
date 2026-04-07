@@ -28,6 +28,16 @@ pub fn updateDrills(registry: *Registry, world: *World) void {
         var timer = registry.timers.getPtr(position) orelse continue;
         var inventory = registry.inventories.getPtr(position) orelse continue;
 
+        // flush buffer to output
+        if (inventory.output_buffer) |*output_buffer| {
+            if (output_buffer.amount > 0 and inventory.output == null) {
+                inventory.output = .{ .resource = output_buffer.resource, .amount = 1 };
+                output_buffer.amount -= 1;
+                if (output_buffer.amount == 0) inventory.output_buffer = null;
+            }
+        }
+
+        // mine on timer
         if (timer.timer >= timer.duration) {
             const output_amount = if (inventory.output) |slot| slot.amount else 0;
             const output_buffer_amount = if (inventory.output_buffer) |slot| slot.amount else 0;
@@ -35,43 +45,18 @@ pub fn updateDrills(registry: *Registry, world: *World) void {
 
             if (total_output >= inventory.max_output) {
                 timer.timer = timer.duration;
-                return;
+                continue;
             }
 
             timer.timer -= timer.duration;
 
-            const mined_kind = world.mineTile(position) orelse return;
-            const resource = mined_kind.toResource() orelse return;
-
-            std.debug.print("[Drill] Mined 1 {s} at {d}, {d}\n", .{ @tagName(resource), position[0], position[1] });
+            const mined_kind = world.mineTile(position) orelse continue;
+            const resource = mined_kind.toResource() orelse continue;
 
             if (inventory.output_buffer) |*output_buffer| {
                 output_buffer.amount += 1;
-                std.debug.print("[Drill] Buffer incremented. Now holding: {d} {s}\n", .{ output_buffer.amount, @tagName(output_buffer.resource) });
             } else {
-                inventory.output_buffer = .{
-                    .resource = resource,
-                    .amount = 1,
-                };
-                std.debug.print("[Drill] Buffer initialized with 1 {s}\n", .{@tagName(resource)});
-            }
-        }
-
-        if (inventory.output_buffer) |*output_buffer| {
-            if (output_buffer.amount == 0) return;
-            if (inventory.output != null) return;
-
-            inventory.output = .{
-                .resource = output_buffer.resource,
-                .amount = 1,
-            };
-
-            output_buffer.amount -= 1;
-            std.debug.print("[Drill] Moved 1 {s} to output. Buffer remaining: {d}\n", .{ @tagName(output_buffer.resource), output_buffer.amount });
-
-            if (output_buffer.amount == 0) {
-                inventory.output_buffer = null;
-                std.debug.print("[Drill] Buffer is now empty.\n", .{});
+                inventory.output_buffer = .{ .resource = resource, .amount = 1 };
             }
         }
     }
@@ -195,7 +180,7 @@ pub fn updateInventories(registry: *Registry) void {
 
         // push to storage
         if (registry.storage.getPtr(neighbor_pos)) |adj_storage| {
-            const amount = adj_storage.items.get(output.resource) orelse continue;
+            const amount = adj_storage.items.get(output.resource) orelse unreachable;
             adj_storage.items.put(output.resource, amount + output.amount);
             inventory.output = null;
         }
@@ -238,9 +223,8 @@ pub fn updateStorage(registry: *Registry) void {
                     successfully_pushed = true;
                 }
             }
-
             // push to storage
-            if (registry.storage.getPtr(neighbor_pos)) |adj_storage| {
+            else if (registry.storage.getPtr(neighbor_pos)) |adj_storage| {
                 const current = adj_storage.items.get(resource) orelse 0;
 
                 adj_storage.items.put(resource, current + 1);

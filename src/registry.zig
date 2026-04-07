@@ -78,15 +78,25 @@ pub const Registry = struct {
         systems.renderSelections(self, bounds);
     }
 
-    pub fn getAdjacentInventoryPtr(self: *Self, pos: Vec2i, dir: Direction) ?*Inventory {
-        const offset = dir.toVec();
-        const neighbor_pos = Vec2i{ pos[0] + offset[0], pos[1] + offset[1] };
+    pub fn hasBuilding(self: *Self, pos: Vec2i) bool {
+        return self.drills.contains(pos) or
+            self.smelters.contains(pos) or
+            self.storage.contains(pos);
+    }
 
-        return self.inventories.getPtr(neighbor_pos);
+    pub fn removeEntity(self: *Self, pos: Vec2i) void {
+        _ = self.orientations.remove(pos);
+        _ = self.inventories.remove(pos);
+        _ = self.timers.remove(pos);
+        _ = self.renderables.remove(pos);
+        _ = self.selectables.remove(pos);
+        _ = self.drills.remove(pos);
+        _ = self.smelters.remove(pos);
+        _ = self.storage.remove(pos);
     }
 
     pub fn placeDrill(self: *Self, world: *World, pos: Vec2i) !bool {
-        if (self.drills.contains(pos)) return false;
+        if (self.hasBuilding(pos)) return false;
 
         const tile = world.getTile(pos) orelse return false;
         if (tile.kind.toResource() == null) return false;
@@ -104,7 +114,7 @@ pub const Registry = struct {
     }
 
     pub fn placeSmelter(self: *Self, pos: Vec2i) !bool {
-        if (self.smelters.contains(pos)) return false;
+        if (self.hasBuilding(pos)) return false;
 
         try self.timers.put(pos, Timer.init(1.0));
         try self.orientations.put(pos, .north);
@@ -121,7 +131,7 @@ pub const Registry = struct {
     }
 
     pub fn placeStorage(self: *Self, pos: Vec2i) !bool {
-        if (self.storage.contains(pos)) return false;
+        if (self.hasBuilding(pos)) return false;
 
         try self.timers.put(pos, Timer.init(0.5));
         try self.orientations.put(pos, .north);
