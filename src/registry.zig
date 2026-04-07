@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const Slot = @import("inventory.zig").Slot;
+const ResrouceKind = @import("inventory.zig").ResourceKind;
 const Vec2i = @import("primitives.zig").Vec2i;
 const World = @import("world.zig").World;
 const Event = @import("event.zig").Event;
@@ -12,6 +13,7 @@ const GridBounds = @import("world.zig").GridBounds;
 const Timer = @import("components.zig").Timer;
 const Drill = @import("components.zig").Drill;
 const Smelter = @import("components.zig").Smelter;
+const Storage = @import("components.zig").Storage;
 const Inventory = @import("components.zig").Inventory;
 const Selectable = @import("components.zig").Selectable;
 const Renderable = @import("components.zig").Renderable;
@@ -29,6 +31,7 @@ pub const Registry = struct {
 
     drills: std.AutoHashMap(Vec2i, Drill),
     smelters: std.AutoHashMap(Vec2i, Smelter),
+    storage: std.AutoHashMap(Vec2i, Storage),
 
     const Self = @This();
 
@@ -42,6 +45,7 @@ pub const Registry = struct {
             .selectables = std.AutoHashMap(Vec2i, Selectable).init(allocator),
             .drills = std.AutoHashMap(Vec2i, Drill).init(allocator),
             .smelters = std.AutoHashMap(Vec2i, Smelter).init(allocator),
+            .storage = std.AutoHashMap(Vec2i, Storage).init(allocator),
         };
     }
 
@@ -53,6 +57,7 @@ pub const Registry = struct {
         self.selectables.deinit();
         self.drills.deinit();
         self.smelters.deinit();
+        self.storage.deinit();
     }
 
     pub fn update(
@@ -64,6 +69,7 @@ pub const Registry = struct {
         systems.updateDrills(self, world);
         systems.updateSmelters(self);
         systems.updateInventories(self);
+        systems.updateStorage(self);
     }
 
     pub fn draw(self: *Self, bounds: GridBounds) void {
@@ -110,6 +116,20 @@ pub const Registry = struct {
         try self.selectables.put(pos, Selectable.init());
 
         std.debug.print("Smelter placed at {d}, {d}\n", .{ pos[0], pos[1] });
+
+        return true;
+    }
+
+    pub fn placeStorage(self: *Self, pos: Vec2i) !bool {
+        if (self.storage.contains(pos)) return false;
+
+        try self.timers.put(pos, Timer.init(0.5));
+        try self.orientations.put(pos, .north);
+        try self.storage.put(pos, Storage.init());
+        try self.renderables.put(pos, Renderable.init(Color.init(40, 40, 180, 255)));
+        try self.selectables.put(pos, Selectable.init());
+
+        std.debug.print("Storage placed at {d}, {d}\n", .{ pos[0], pos[1] });
 
         return true;
     }

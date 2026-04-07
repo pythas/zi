@@ -41,6 +41,18 @@ pub const Smelter = struct {
     }
 };
 
+pub const Storage = struct {
+    items: std.EnumMap(ResourceKind, u32),
+
+    const Self = @This();
+
+    pub fn init() Self {
+        return .{
+            .items = std.EnumMap(ResourceKind, u32).initFull(0),
+        };
+    }
+};
+
 pub const Direction = enum {
     north,
     south,

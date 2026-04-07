@@ -15,6 +15,7 @@ const World = @import("world.zig").World;
 pub const Tool = enum {
     drill,
     smelter,
+    storage,
 };
 
 pub fn main(init: std.process.Init) !void {
@@ -98,6 +99,7 @@ pub fn main(init: std.process.Init) !void {
                 const has_placed_building = switch (active_tool) {
                     .drill => try registry.placeDrill(&world, grid_pos),
                     .smelter => try registry.placeSmelter(grid_pos),
+                    .storage => try registry.placeStorage(grid_pos),
                 };
 
                 if (has_placed_building) {
@@ -156,6 +158,10 @@ pub fn main(init: std.process.Init) !void {
                 active_tool = .smelter;
             }
 
+            if (ui.button(Rectangle.init(80 + 70, 10, 60, 20), active_tool == .storage, "Storage").is_clicked) {
+                active_tool = .storage;
+            }
+
             // {
             //     var buffer: [64]u8 = undefined;
             //     const text = try std.fmt.bufPrintZ(&buffer, "Raw iron: {d}", .{inventory.items.get(.raw_iron).?});
@@ -179,6 +185,21 @@ pub fn main(init: std.process.Init) !void {
                         var buffer: [64]u8 = undefined;
                         const text = try std.fmt.bufPrintZ(&buffer, "Output: {d}", .{output_amount});
                         ui.label(.{ 610, 60 }, text, 10, Color.init(230, 230, 230, 255));
+                    }
+                }
+
+                if (registry.storage.getPtr(building_pos)) |storage| {
+                    ui.panel(Rectangle.init(600, 40, 200, 600), Color.init(20, 20, 40, 255));
+
+                    var it = storage.items.iterator();
+                    var i: i32 = 0;
+                    while (it.next()) |entry| : (i += 1) {
+                        const resource = entry.key;
+                        const amount = entry.value.*;
+
+                        var buffer: [64]u8 = undefined;
+                        const text = try std.fmt.bufPrintZ(&buffer, "{s}: {d}", .{ resource.toLabel(), amount });
+                        ui.label(.{ 610, 60 + i * 10 }, text, 10, Color.init(230, 230, 230, 255));
                     }
                 }
             }

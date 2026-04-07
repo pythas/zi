@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const GridBounds = @import("world.zig").GridBounds;
-const Regsitry = @import("registry.zig").Registry;
+const Registry = @import("registry.zig").Registry;
 const Color = @import("primitives.zig").Color;
 const Vec2i = @import("primitives.zig").Vec2i;
 const ResourceKind = @import("inventory.zig").ResourceKind;
@@ -9,7 +9,7 @@ const World = @import("world.zig").World;
 const Tile = @import("world.zig").Tile;
 const rl = @import("rl.zig").raylib;
 
-pub fn updateTimers(registry: *Regsitry, dt: f32) void {
+pub fn updateTimers(registry: *Registry, dt: f32) void {
     var it = registry.timers.iterator();
     while (it.next()) |entry| {
         var timer = entry.value_ptr;
@@ -20,7 +20,7 @@ pub fn updateTimers(registry: *Regsitry, dt: f32) void {
     }
 }
 
-pub fn updateDrills(registry: *Regsitry, world: *World) void {
+pub fn updateDrills(registry: *Registry, world: *World) void {
     var it = registry.drills.iterator();
     while (it.next()) |entry| {
         const position = entry.key_ptr.*;
@@ -77,7 +77,7 @@ pub fn updateDrills(registry: *Regsitry, world: *World) void {
     }
 }
 
-pub fn updateSmelters(registry: *Regsitry) void {
+pub fn updateSmelters(registry: *Registry) void {
     var it = registry.smelters.iterator();
     while (it.next()) |entry| {
         const position = entry.key_ptr.*;
@@ -168,7 +168,7 @@ pub fn updateSmelters(registry: *Regsitry) void {
     }
 }
 
-pub fn updateInventories(registry: *Regsitry) void {
+pub fn updateInventories(registry: *Registry) void {
     var it = registry.inventories.iterator();
     while (it.next()) |entry| {
         const position = entry.key_ptr.*;
@@ -176,20 +176,90 @@ pub fn updateInventories(registry: *Regsitry) void {
 
         const output = inventory.output orelse continue;
         const direction = registry.orientations.get(position) orelse continue;
-        const adj_inventory = registry.getAdjacentInventoryPtr(position, direction) orelse continue;
 
-        if (adj_inventory.input != null) continue;
+        const offset = direction.toVec();
+        const neighbor_pos = Vec2i{ position[0] + offset[0], position[1] + offset[1] };
 
-        if (!adj_inventory.accepted_inputs.contains(output.resource)) {
+        // push to inventory
+        if (registry.inventories.getPtr(neighbor_pos)) |adj_inventory| {
+            if (adj_inventory.input != null) continue;
+
+            if (!adj_inventory.accepted_inputs.contains(output.resource)) {
+                continue;
+            }
+
+            adj_inventory.input = output;
+            inventory.output = null;
             continue;
         }
 
-        adj_inventory.input = output;
-        inventory.output = null;
+        // push to storage
+        if (registry.storage.getPtr(neighbor_pos)) |adj_storage| {
+            const amount = adj_storage.items.get(output.resource) orelse continue;
+            adj_storage.items.put(output.resource, amount + output.amount);
+            inventory.output = null;
+        }
     }
 }
 
-pub fn renderBuildings(registry: *Regsitry, bounds: GridBounds) void {
+pub fn updateStorage(registry: *Registry) void {
+    var it = registry.storage.iterator();
+    while (it.next()) |entry| {
+        const position = entry.key_ptr.*;
+        var storage = entry.value_ptr;
+
+        var timer = registry.timers.getPtr(position) orelse continue;
+        const direction = registry.orientations.get(position) orelse continue;
+
+        const offset = direction.toVec();
+        const neighbor_pos = Vec2i{ position[0] + offset[0], position[1] + offset[1] };
+
+        if (timer.timer >= timer.duration) {
+            var item_to_push: ?ResourceKind = null;
+            var item_it = storage.items.iterator();
+            while (item_it.next()) |item_entry| {
+                if (item_entry.value.* > 0) {
+                    item_to_push = item_entry.key;
+                    break;
+                }
+            }
+
+            const resource = item_to_push orelse {
+                timer.is_active = false;
+                continue;
+            };
+
+            var successfully_pushed = false;
+
+            // push to inventory
+            if (registry.inventories.getPtr(neighbor_pos)) |adj_inv| {
+                if (adj_inv.input == null and adj_inv.accepted_inputs.contains(resource)) {
+                    adj_inv.input = .{ .resource = resource, .amount = 1 };
+                    successfully_pushed = true;
+                }
+            }
+
+            // push to storage
+            if (registry.storage.getPtr(neighbor_pos)) |adj_storage| {
+                const current = adj_storage.items.get(resource) orelse 0;
+
+                adj_storage.items.put(resource, current + 1);
+                successfully_pushed = true;
+            }
+
+            if (successfully_pushed) {
+                storage.items.put(resource, storage.items.get(resource).? - 1);
+                timer.timer -= timer.duration;
+            } else {
+                timer.timer = timer.duration;
+            }
+
+            timer.is_active = true;
+        }
+    }
+}
+
+pub fn renderBuildings(registry: *Registry, bounds: GridBounds) void {
     var it = registry.renderables.iterator();
     while (it.next()) |entry| {
         const position = entry.key_ptr.*;
@@ -211,7 +281,7 @@ pub fn renderBuildings(registry: *Regsitry, bounds: GridBounds) void {
     }
 }
 
-pub fn renderOrientations(registry: *Regsitry, bounds: GridBounds) void {
+pub fn renderOrientations(registry: *Registry, bounds: GridBounds) void {
     var it = registry.orientations.iterator();
     while (it.next()) |entry| {
         const position = entry.key_ptr.*;
@@ -257,7 +327,7 @@ pub fn renderOrientations(registry: *Regsitry, bounds: GridBounds) void {
     }
 }
 
-pub fn renderSelections(registry: *Regsitry, bounds: GridBounds) void {
+pub fn renderSelections(registry: *Registry, bounds: GridBounds) void {
     var it = registry.selectables.iterator();
     while (it.next()) |entry| {
         const position = entry.key_ptr.*;
