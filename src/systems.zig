@@ -153,7 +153,9 @@ pub fn updateSmelters(registry: *Registry) void {
     }
 }
 
-pub fn updateInventories(registry: *Registry) void {
+pub fn updateInventories(registry: *Registry, transfer_ready: bool) void {
+    if (!transfer_ready) return;
+
     var it = registry.inventories.iterator();
     while (it.next()) |entry| {
         const position = entry.key_ptr.*;
@@ -187,7 +189,9 @@ pub fn updateInventories(registry: *Registry) void {
     }
 }
 
-pub fn updateStorage(registry: *Registry) void {
+pub fn updateStorage(registry: *Registry, transfer_ready: bool) void {
+    if (!transfer_ready) return;
+
     var it = registry.storage.iterator();
     while (it.next()) |entry| {
         const position = entry.key_ptr.*;

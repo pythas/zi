@@ -22,6 +22,9 @@ const systems = @import("systems.zig");
 pub const Registry = struct {
     allocator: std.mem.Allocator,
 
+    transfer_timer: f32,
+    transfer_duration: f32,
+
     orientations: std.AutoHashMap(Vec2i, Direction),
     inventories: std.AutoHashMap(Vec2i, Inventory),
     timers: std.AutoHashMap(Vec2i, Timer),
@@ -38,6 +41,8 @@ pub const Registry = struct {
     pub fn init(allocator: std.mem.Allocator) Self {
         return .{
             .allocator = allocator,
+            .transfer_timer = 0.0,
+            .transfer_duration = 0.25,
             .orientations = std.AutoHashMap(Vec2i, Direction).init(allocator),
             .inventories = std.AutoHashMap(Vec2i, Inventory).init(allocator),
             .timers = std.AutoHashMap(Vec2i, Timer).init(allocator),
@@ -65,11 +70,18 @@ pub const Registry = struct {
         dt: f32,
         world: *World,
     ) !void {
+        self.transfer_timer += dt;
+        const transfer_ready = self.transfer_timer >= self.transfer_duration;
+
         systems.updateTimers(self, dt);
         systems.updateDrills(self, world);
         systems.updateSmelters(self);
-        systems.updateInventories(self);
-        systems.updateStorage(self);
+        systems.updateInventories(self, transfer_ready);
+        systems.updateStorage(self, transfer_ready);
+
+        if (transfer_ready) {
+            self.transfer_timer -= self.transfer_duration;
+        }
     }
 
     pub fn draw(self: *Self, bounds: GridBounds) void {
