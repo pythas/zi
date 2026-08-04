@@ -56,6 +56,7 @@ pub const Ui = struct {
         self: *Self,
         rect: Rectangle,
         is_active: bool,
+        is_disabled: bool,
         text: [:0]const u8,
     ) UiState {
         var state = UiState{};
@@ -63,16 +64,22 @@ pub const Ui = struct {
 
         if (rl.CheckCollisionPointRec(mouse_pos, @bitCast(rect))) {
             state.is_hovered = true;
-            state.is_down = rl.IsMouseButtonDown(rl.MOUSE_BUTTON_LEFT);
-            state.is_clicked = rl.IsMouseButtonReleased(rl.MOUSE_BUTTON_LEFT);
-            state.is_right_down = rl.IsMouseButtonDown(rl.MOUSE_BUTTON_RIGHT);
-            state.is_right_clicked = rl.IsMouseButtonReleased(rl.MOUSE_BUTTON_RIGHT);
+
+            if (!is_disabled) {
+                state.is_down = rl.IsMouseButtonDown(rl.MOUSE_BUTTON_LEFT);
+                state.is_clicked = rl.IsMouseButtonReleased(rl.MOUSE_BUTTON_LEFT);
+                state.is_right_down = rl.IsMouseButtonDown(rl.MOUSE_BUTTON_RIGHT);
+                state.is_right_clicked = rl.IsMouseButtonReleased(rl.MOUSE_BUTTON_RIGHT);
+            }
         }
 
         var bg_color: Color = undefined;
         var text_color: Color = undefined;
 
-        if (is_active) {
+        if (is_disabled) {
+            bg_color = self.style.button_bg_color_disabled;
+            text_color = self.style.button_text_color_disabled;
+        } else if (is_active) {
             if (state.is_down) {
                 bg_color = self.style.button_bg_color_active_pressed;
             } else if (state.is_hovered) {

@@ -4,19 +4,14 @@ const Camera = @import("camera.zig").Camera;
 const Color = @import("primitives.zig").Color;
 const Regsitry = @import("registry.zig").Registry;
 const Drill = @import("components.zig").Drill;
-const Event = @import("event.zig").Event;
 const InputState = @import("input.zig").InputState;
 const Rectangle = @import("primitives.zig").Rectangle;
 const Vec2i = @import("primitives.zig").Vec2i;
 const rl = @import("rl.zig").raylib;
 const Ui = @import("ui.zig").Ui;
 const World = @import("world.zig").World;
-
-pub const Tool = enum {
-    drill,
-    smelter,
-    storage,
-};
+const economy = @import("economy.zig");
+const BuildingKind = @import("economy.zig").BuildingKind;
 
 pub fn main(init: std.process.Init) !void {
     rl.InitWindow(800, 600, "zi");
@@ -26,20 +21,22 @@ pub fn main(init: std.process.Init) !void {
 
     const allocator = init.gpa;
 
+    // _ = economy.getCost(.station);
+
     var world = try World.init(allocator, 0xdead);
     defer world.deinit();
 
     var registry = Regsitry.init(allocator);
     defer registry.deinit();
 
-    // var events: std.ArrayList(Event) = .empty;
-    // defer events.deinit(allocator);
+    const center = World.size / 2;
+    _ = try registry.placeStation(&world, .{ center, center });
 
     var camera = Camera.init(.{ 0, 0 });
 
     // var inventory = Inventory.init();
 
-    var active_tool: Tool = .drill;
+    var active_buildling_kind: BuildingKind = .drill;
 
     var ui = Ui.init();
     var inspected: ?Vec2i = null;
@@ -96,7 +93,7 @@ pub fn main(init: std.process.Init) !void {
                     inspected = null;
                 }
 
-                const has_placed_building = switch (active_tool) {
+                const has_placed_building = switch (active_buildling_kind) {
                     .drill => try registry.placeDrill(&world, grid_pos),
                     .smelter => try registry.placeSmelter(grid_pos),
                     .storage => try registry.placeStorage(grid_pos),
@@ -123,20 +120,6 @@ pub fn main(init: std.process.Init) !void {
         camera.update(input_state);
         try registry.update(dt, &world);
 
-        // handle events
-        // for (events.items) |event| {
-        //     switch (event) {
-        //         .resource_produced => |data| {
-        //             const current_amount = inventory.items.get(data.resource) orelse 0;
-        //
-        //             inventory.items.put(data.resource, current_amount + data.amount);
-        //
-        //             std.debug.print("Inventory now has {d} {s}\n", .{ current_amount + data.amount, @tagName(data.resource) });
-        //         },
-        //     }
-        // }
-        // events.clearRetainingCapacity();
-
         const viewport = camera.getViewport();
         const grid_bounds = World.getBounds(viewport, 3.0);
 
@@ -157,23 +140,46 @@ pub fn main(init: std.process.Init) !void {
             // ui
             ui.panel(Rectangle.init(0, 0, 800, 40), Color.init(20, 20, 40, 255));
 
-            if (ui.button(Rectangle.init(10, 10, 60, 20), active_tool == .drill, "Drill").is_clicked) {
-                active_tool = .drill;
+            if (ui.button(
+                Rectangle.init(10 + 70 * 0, 10, 60, 20),
+                active_buildling_kind == .drill,
+                false,
+                "Drill",
+            ).is_clicked) {
+                active_buildling_kind = .drill;
             }
 
-            if (ui.button(Rectangle.init(80, 10, 60, 20), active_tool == .smelter, "Smelter").is_clicked) {
-                active_tool = .smelter;
+            if (ui.button(
+                Rectangle.init(10 + 70 * 1, 10, 60, 20),
+                active_buildling_kind == .smelter,
+                false,
+                "Smelter",
+            ).is_clicked) {
+                active_buildling_kind = .smelter;
             }
 
-            if (ui.button(Rectangle.init(80 + 70, 10, 60, 20), active_tool == .storage, "Storage").is_clicked) {
-                active_tool = .storage;
+            if (ui.button(
+                Rectangle.init(10 + 70 * 2, 10, 60, 20),
+                active_buildling_kind == .storage,
+                false,
+                "Storage",
+            ).is_clicked) {
+                active_buildling_kind = .storage;
             }
 
-            // {
-            //     var buffer: [64]u8 = undefined;
-            //     const text = try std.fmt.bufPrintZ(&buffer, "Raw iron: {d}", .{inventory.items.get(.raw_iron).?});
-            //     ui.label(.{ 200, 10 }, text, 10, Color.init(230, 230, 230, 255));
-            // }
+            {
+                var station_inventory = registry.getInventory();
+                var it = station_inventory.iterator();
+                var i: i32 = 0;
+                while (it.next()) |entry| : (i += 1) {
+                    const resource = entry.key;
+                    const amount = entry.value.*;
+
+                    var buffer: [64]u8 = undefined;
+                    const text = try std.fmt.bufPrintZ(&buffer, "{s}: {d}", .{ resource.toString(), amount });
+                    ui.label(.{ 10, 60 + i * 10 }, text, 10, Color.init(230, 230, 230, 255));
+                }
+            }
 
             if (inspected) |building_pos| {
                 if (registry.inventories.get(building_pos)) |inventory| {
@@ -205,7 +211,7 @@ pub fn main(init: std.process.Init) !void {
                         const amount = entry.value.*;
 
                         var buffer: [64]u8 = undefined;
-                        const text = try std.fmt.bufPrintZ(&buffer, "{s}: {d}", .{ resource.toLabel(), amount });
+                        const text = try std.fmt.bufPrintZ(&buffer, "{s}: {d}", .{ resource.toString(), amount });
                         ui.label(.{ 610, 60 + i * 10 }, text, 10, Color.init(230, 230, 230, 255));
                     }
                 }

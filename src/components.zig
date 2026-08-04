@@ -21,6 +21,18 @@ pub const Timer = struct {
     }
 };
 
+pub const Station = struct {
+    items: std.EnumMap(ResourceKind, u32),
+
+    const Self = @This();
+
+    pub fn init() Self {
+        return .{
+            .items = std.EnumMap(ResourceKind, u32).initFull(0),
+        };
+    }
+};
+
 pub const Drill = struct {
     const Self = @This();
 

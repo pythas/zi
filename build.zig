@@ -19,6 +19,7 @@ pub fn build(b: *std.Build) void {
             .link_libc = true,
         }),
     });
+    exe.use_llvm = true;
 
     exe.root_module.linkLibrary(raylib);
     exe.root_module.addIncludePath(raylib_dep.path("src"));

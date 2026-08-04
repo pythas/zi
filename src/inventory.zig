@@ -6,7 +6,7 @@ pub const ResourceKind = enum {
 
     const Self = @This();
 
-    pub fn toLabel(self: Self) []const u8 {
+    pub fn toString(self: Self) []const u8 {
         return switch (self) {
             .raw_iron => "Raw iron",
             .iron_ingot => "Iron ingot",

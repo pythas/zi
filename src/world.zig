@@ -81,6 +81,30 @@ const WorldGenerator = struct {
         tiles: []?Tile,
         count: usize,
         spawn_radius: f32,
+        min_spawn_radius: f32,
+        config: AsteroidConfig,
+    ) void {
+        var prng = std.Random.DefaultPrng.init(@bitCast(@as(i64, self.seed)));
+        const random = prng.random();
+
+        const world_size: i32 = World.size;
+        const center_offset = @as(f32, @floatFromInt(world_size / 2));
+
+        for (0..count) |_| {
+            const angle = random.float(f32) * std.math.tau;
+            const distance = min_spawn_radius + @sqrt(random.float(f32)) * (spawn_radius - min_spawn_radius);
+            const center_x: i32 = @intFromFloat(center_offset + (distance * @cos(angle)));
+            const center_y: i32 = @intFromFloat(center_offset + (distance * @sin(angle)));
+
+            self.generateAsteroid(tiles, center_x, center_y, config);
+        }
+    }
+
+    pub fn generateAsteroid(
+        self: *Self,
+        tiles: []?Tile,
+        center_x: i32,
+        center_y: i32,
         config: AsteroidConfig,
     ) void {
         const radius_variance = config.max_radius - config.min_radius;
@@ -90,43 +114,35 @@ const WorldGenerator = struct {
         const random = prng.random();
 
         const world_size: i32 = World.size;
-        const center_offset = @as(f32, @floatFromInt(world_size / 2));
 
-        for (0..count) |_| {
-            const angle = random.float(f32) * std.math.tau;
-            const distance = @sqrt(random.float(f32)) * spawn_radius;
-            const center_x: i32 = @intFromFloat(center_offset + (distance * @cos(angle)));
-            const center_y: i32 = @intFromFloat(center_offset + (distance * @sin(angle)));
+        const base_radius = (random.float(f32) * radius_variance) + config.min_radius;
 
-            const base_radius = (random.float(f32) * radius_variance) + config.min_radius;
+        const min_x = @max(0, center_x - @as(i32, @intFromFloat(base_radius)) - box_padding);
+        const max_x = @min(world_size - 1, center_x + @as(i32, @intFromFloat(base_radius)) + box_padding);
+        const min_y = @max(0, center_y - @as(i32, @intFromFloat(base_radius)) - box_padding);
+        const max_y = @min(world_size - 1, center_y + @as(i32, @intFromFloat(base_radius)) + box_padding);
 
-            const min_x = @max(0, center_x - @as(i32, @intFromFloat(base_radius)) - box_padding);
-            const max_x = @min(world_size - 1, center_x + @as(i32, @intFromFloat(base_radius)) + box_padding);
-            const min_y = @max(0, center_y - @as(i32, @intFromFloat(base_radius)) - box_padding);
-            const max_y = @min(world_size - 1, center_y + @as(i32, @intFromFloat(base_radius)) + box_padding);
+        var y = min_y;
+        while (y <= max_y) : (y += 1) {
+            var x = min_x;
+            while (x <= max_x) : (x += 1) {
+                const dx = @as(f32, @floatFromInt(x - center_x));
+                const dy = @as(f32, @floatFromInt(y - center_y));
+                const tile_dist = @sqrt((dx * dx) + (dy * dy));
 
-            var y = min_y;
-            while (y <= max_y) : (y += 1) {
-                var x = min_x;
-                while (x <= max_x) : (x += 1) {
-                    const dx = @as(f32, @floatFromInt(x - center_x));
-                    const dy = @as(f32, @floatFromInt(y - center_y));
-                    const tile_dist = @sqrt((dx * dx) + (dy * dy));
+                const noise_val = self.terrain_noise.genNoise2D(@as(f32, @floatFromInt(x)), @as(f32, @floatFromInt(y)));
+                const bumpy_radius = base_radius + (noise_val * config.noise_amplitude);
 
-                    const noise_val = self.terrain_noise.genNoise2D(@as(f32, @floatFromInt(x)), @as(f32, @floatFromInt(y)));
-                    const bumpy_radius = base_radius + (noise_val * config.noise_amplitude);
+                if (tile_dist <= bumpy_radius) {
+                    const index = @as(usize, @intCast(y)) * @as(usize, @intCast(world_size)) + @as(usize, @intCast(x));
 
-                    if (tile_dist <= bumpy_radius) {
-                        const index = @as(usize, @intCast(y)) * @as(usize, @intCast(world_size)) + @as(usize, @intCast(x));
+                    const ore_val = self.ore_noise.genNoise2D(@as(f32, @floatFromInt(x)), @as(f32, @floatFromInt(y)));
 
-                        const ore_val = self.ore_noise.genNoise2D(@as(f32, @floatFromInt(x)), @as(f32, @floatFromInt(y)));
-
-                        if (ore_val > config.iron_threshold) {
-                            tiles[index] = Tile.init(.iron);
-                        } else {
-                            if (tiles[index] == null or tiles[index].?.kind != .iron) {
-                                tiles[index] = Tile.init(.rock);
-                            }
+                    if (ore_val > config.iron_threshold) {
+                        tiles[index] = Tile.init(.iron);
+                    } else {
+                        if (tiles[index] == null or tiles[index].?.kind != .iron) {
+                            tiles[index] = Tile.init(.rock);
                         }
                     }
                 }
@@ -165,13 +181,32 @@ pub const World = struct {
             self.tiles,
             5,
             100.0,
+            50.0,
             .{
                 .min_radius = 5.0,
-                .max_radius = 15.0,
+                .max_radius = 10.0,
                 .noise_amplitude = 6.0,
                 .iron_threshold = 0.30,
             },
         );
+
+        const center = World.size / 2;
+        self.generator.generateAsteroid(
+            self.tiles,
+            center,
+            center,
+            .{
+                .min_radius = 10.0,
+                .max_radius = 15.0,
+                .noise_amplitude = 10.0,
+                .iron_threshold = 0.52,
+            },
+        );
+
+        // place one reachable iron ore
+        const tile_x = center + 2;
+        const tile_y = center;
+        self.tiles[tile_y * size + tile_x] = Tile.init(.iron);
 
         return self;
     }

@@ -179,11 +179,16 @@ pub fn updateInventories(registry: *Registry, transfer_ready: bool) void {
             inventory.output = null;
             continue;
         }
-
         // push to storage
-        if (registry.storage.getPtr(neighbor_pos)) |adj_storage| {
+        else if (registry.storage.getPtr(neighbor_pos)) |adj_storage| {
             const amount = adj_storage.items.get(output.resource) orelse unreachable;
             adj_storage.items.put(output.resource, amount + output.amount);
+            inventory.output = null;
+        }
+        // push to station
+        else if (registry.stations.getPtr(neighbor_pos)) |adj_station| {
+            const amount = adj_station.items.get(output.resource) orelse unreachable;
+            adj_station.items.put(output.resource, amount + output.amount);
             inventory.output = null;
         }
     }
@@ -197,52 +202,50 @@ pub fn updateStorage(registry: *Registry, transfer_ready: bool) void {
         const position = entry.key_ptr.*;
         var storage = entry.value_ptr;
 
-        var timer = registry.timers.getPtr(position) orelse continue;
         const direction = registry.orientations.get(position) orelse continue;
 
         const offset = direction.toVec();
         const neighbor_pos = Vec2i{ position[0] + offset[0], position[1] + offset[1] };
 
-        if (timer.timer >= timer.duration) {
-            var item_to_push: ?ResourceKind = null;
-            var item_it = storage.items.iterator();
-            while (item_it.next()) |item_entry| {
-                if (item_entry.value.* > 0) {
-                    item_to_push = item_entry.key;
-                    break;
-                }
+        var item_to_push: ?ResourceKind = null;
+        var item_it = storage.items.iterator();
+        while (item_it.next()) |item_entry| {
+            if (item_entry.value.* > 0) {
+                item_to_push = item_entry.key;
+                break;
             }
+        }
 
-            const resource = item_to_push orelse {
-                timer.is_active = false;
-                continue;
-            };
+        const resource = item_to_push orelse {
+            continue;
+        };
 
-            var successfully_pushed = false;
+        var successfully_pushed = false;
 
-            // push to inventory
-            if (registry.inventories.getPtr(neighbor_pos)) |adj_inv| {
-                if (adj_inv.input == null and adj_inv.accepted_inputs.contains(resource)) {
-                    adj_inv.input = .{ .resource = resource, .amount = 1 };
-                    successfully_pushed = true;
-                }
-            }
-            // push to storage
-            else if (registry.storage.getPtr(neighbor_pos)) |adj_storage| {
-                const current = adj_storage.items.get(resource) orelse 0;
-
-                adj_storage.items.put(resource, current + 1);
+        // push to inventory
+        if (registry.inventories.getPtr(neighbor_pos)) |adj_inv| {
+            if (adj_inv.input == null and adj_inv.accepted_inputs.contains(resource)) {
+                adj_inv.input = .{ .resource = resource, .amount = 1 };
                 successfully_pushed = true;
             }
+        }
+        // push to storage
+        else if (registry.storage.getPtr(neighbor_pos)) |adj_storage| {
+            const current = adj_storage.items.get(resource) orelse 0;
 
-            if (successfully_pushed) {
-                storage.items.put(resource, storage.items.get(resource).? - 1);
-                timer.timer -= timer.duration;
-            } else {
-                timer.timer = timer.duration;
-            }
+            adj_storage.items.put(resource, current + 1);
+            successfully_pushed = true;
+        }
+        // push to station
+        else if (registry.stations.getPtr(neighbor_pos)) |adj_station| {
+            const current = adj_station.items.get(resource) orelse 0;
 
-            timer.is_active = true;
+            adj_station.items.put(resource, current + 1);
+            successfully_pushed = true;
+        }
+
+        if (successfully_pushed) {
+            storage.items.put(resource, storage.items.get(resource).? - 1);
         }
     }
 }
